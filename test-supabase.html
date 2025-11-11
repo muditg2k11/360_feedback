@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Connection Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+    <h1>Supabase Connection Test</h1>
+    <button onclick="testConnection()">Test Connection</button>
+    <pre id="results"></pre>
+
+    <script>
+        const supabaseUrl = 'https://yeggkvzngggjfbwkginb.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllZ2drdnpuZ2dnamZid2tnaW5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwMjI5OTcsImV4cCI6MjA3NTU5ODk5N30.gnigRkVGoq0uiVwrPtKxm5XTWCrr1k7q2aL3ep4Q9so';
+        
+        const { createClient } = supabase;
+        const client = createClient(supabaseUrl, supabaseKey);
+
+        async function testConnection() {
+            const results = document.getElementById('results');
+            results.textContent = 'Testing...\n\n';
+
+            try {
+                // Test 1: Fetch feedback items
+                results.textContent += 'Test 1: Fetching feedback_items...\n';
+                const { data: feedbackData, error: feedbackError } = await client
+                    .from('feedback_items')
+                    .select('*')
+                    .order('collected_at', { ascending: false });
+
+                if (feedbackError) {
+                    results.textContent += `Error: ${JSON.stringify(feedbackError, null, 2)}\n`;
+                } else {
+                    results.textContent += `Success! Found ${feedbackData?.length || 0} feedback items\n`;
+                    results.textContent += JSON.stringify(feedbackData, null, 2) + '\n\n';
+                }
+
+                // Test 2: Fetch AI analyses
+                results.textContent += 'Test 2: Fetching ai_analyses...\n';
+                const { data: analysisData, error: analysisError } = await client
+                    .from('ai_analyses')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (analysisError) {
+                    results.textContent += `Error: ${JSON.stringify(analysisError, null, 2)}\n`;
+                } else {
+                    results.textContent += `Success! Found ${analysisData?.length || 0} analyses\n`;
+                    results.textContent += JSON.stringify(analysisData, null, 2) + '\n\n';
+                }
+
+            } catch (error) {
+                results.textContent += `Exception: ${error.message}\n`;
+            }
+        }
+    </script>
+</body>
+</html>
