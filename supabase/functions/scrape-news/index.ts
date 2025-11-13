@@ -415,10 +415,13 @@ function extractTopics(text: string): string[] {
 
 async function scrapeRSSFeed(source: any): Promise<NewsArticle[]> {
   try {
-    console.log(`Fetching RSS feed: ${source.rss_feed}`);
+    console.log(`Fetching RSS feed from ${source.name} (${source.language}): ${source.rss_feed}`);
     const response = await fetch(source.rss_feed, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+        'Accept-Charset': 'UTF-8',
+        'Accept-Language': 'en,hi,kn,ta,te,ml,mr,bn,gu,pa,or,as',
       },
     });
 
@@ -433,9 +436,9 @@ async function scrapeRSSFeed(source: any): Promise<NewsArticle[]> {
     const items = doc.querySelectorAll('item');
     const articles: NewsArticle[] = [];
 
-    console.log(`Found ${items.length} items in RSS feed`);
+    console.log(`Found ${items.length} items in ${source.language} RSS feed from ${source.name}`);
 
-    for (let i = 0; i < Math.min(items.length, 5); i++) {
+    for (let i = 0; i < Math.min(items.length, 10); i++) {
       const item = items[i];
 
       const titleEl = item.querySelector('title');
