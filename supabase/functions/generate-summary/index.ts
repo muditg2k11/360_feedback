@@ -41,7 +41,7 @@ Deno.serve(async (req: Request) => {
 
     console.log('Generating summary for:', title.substring(0, 50));
 
-    // Generate unique summary from actual content
+    // Generate unique summary from actual content (max 60 words)
     const summary = generateContentBasedSummary(content, title, language);
 
     console.log('Generated summary:', summary);
@@ -90,57 +90,71 @@ function generateContentBasedSummary(content: string, title: string, language: s
   // Clean the content
   const cleanContent = content.replace(/\s+/g, ' ').trim();
   const cleanTitle = title.replace(/\s+/g, ' ').trim();
-  
+
   if (!cleanContent || cleanContent.length < 20) {
-    return cleanTitle.substring(0, 150);
+    return cleanTitle.substring(0, 60);
   }
 
   // Split into sentences (handle multiple scripts)
-  const sentenceDelimiters = /[.!?।॥\u0964\u0965]+\s+/;
+  const sentenceDelimiters = /[.!?।॥]+\s+/;
   const sentences = cleanContent.split(sentenceDelimiters)
     .map(s => s.trim())
     .filter(s => s.length > 20); // Filter out very short fragments
 
   if (sentences.length === 0) {
-    // If no proper sentences, take first 150 chars
-    return cleanContent.substring(0, 150) + (cleanContent.length > 150 ? '...' : '');
+    // If no proper sentences, count words and limit to 60 words
+    const words = cleanContent.split(/\s+/);
+    if (words.length <= 60) {
+      return cleanContent;
+    }
+    return words.slice(0, 60).join(' ') + '...';
   }
 
   // Score sentences based on importance
   const scoredSentences = sentences.map(sentence => ({
     text: sentence,
-    score: calculateSentenceScore(sentence, cleanTitle, cleanContent)
+    score: calculateSentenceScore(sentence, cleanTitle, cleanContent),
+    wordCount: sentence.split(/\s+/).length
   }));
 
   // Sort by score descending
   scoredSentences.sort((a, b) => b.score - a.score);
 
-  // Take the most important sentence(s)
+  // Build summary with max 60 words (approximately 2-3 sentences)
   let summary = '';
-  
-  // Try to get a good summary length (100-150 chars)
+  let wordCount = 0;
+  const maxWords = 60;
+
   for (const scored of scoredSentences) {
-    const potentialSummary = summary ? summary + ' ' + scored.text : scored.text;
-    
-    if (potentialSummary.length <= 150) {
-      summary = potentialSummary;
+    const potentialWordCount = wordCount + scored.wordCount;
+
+    if (potentialWordCount <= maxWords) {
+      summary = summary ? summary + ' ' + scored.text : scored.text;
+      wordCount = potentialWordCount;
     } else if (!summary) {
-      // If even the first sentence is too long, truncate it
-      summary = scored.text.substring(0, 147) + '...';
+      // If even the first sentence exceeds 60 words, truncate it
+      const words = scored.text.split(/\s+/);
+      summary = words.slice(0, maxWords).join(' ') + '...';
       break;
     } else {
       // We have enough content
       break;
     }
+
+    // If we have 2-3 good sentences, stop
+    if (wordCount >= 40 && summary.split(/[.!?।॥]+/).length >= 2) {
+      break;
+    }
   }
 
-  // If summary is still empty, use first sentence
+  // If summary is still empty, use first sentence with word limit
   if (!summary && sentences.length > 0) {
-    summary = sentences[0].substring(0, 150);
-    if (sentences[0].length > 150) summary += '...';
+    const words = sentences[0].split(/\s+/);
+    summary = words.slice(0, maxWords).join(' ');
+    if (words.length > maxWords) summary += '...';
   }
 
-  return summary || cleanContent.substring(0, 150) + '...';
+  return summary || cleanContent.split(/\s+/).slice(0, maxWords).join(' ') + '...';
 }
 
 function calculateSentenceScore(sentence: string, title: string, fullContent: string): number {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { indianStates } from '../constants';
-import { Search, Filter, Plus, ExternalLink, Clock, CheckCircle, Circle, Brain, Loader, RefreshCw, FileText, Globe, MapPin, Sparkles, TrendingUp, Lightbulb } from 'lucide-react';
+import { Search, Filter, Plus, ExternalLink, Clock, CheckCircle, Circle, Brain, Loader, RefreshCw, FileText, Globe, MapPin, Sparkles, TrendingUp, Lightbulb, Download } from 'lucide-react';
 import FeedbackDetailModal from '../components/FeedbackDetailModal';
 import AddFeedbackModal from '../components/AddFeedbackModal';
 import { FeedbackItem, MediaSource } from '../types';
@@ -26,6 +26,7 @@ export default function FeedbackCollection() {
   const [insights, setInsights] = useState<InsightsResult['insights'] | null>(null);
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -249,6 +250,37 @@ export default function FeedbackCollection() {
     }
   };
 
+  const handleExportJSON = async () => {
+    setIsExporting(true);
+    try {
+      const result = await scrapingService.exportToStructuredJSON({
+        region: regionFilter !== 'all' ? regionFilter : undefined,
+        limit: 100,
+      });
+
+      if (result.success && result.data) {
+        const jsonString = JSON.stringify(result.data, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `feedback-data-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        alert(`Successfully exported ${result.count} items to JSON!`);
+      } else {
+        alert(`Export failed: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error exporting JSON:', error);
+      alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -293,7 +325,15 @@ export default function FeedbackCollection() {
             )}
           </div>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-3 flex-wrap gap-2">
+          <button
+            onClick={handleExportJSON}
+            disabled={isExporting}
+            className="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-cyan-700 text-white rounded-lg hover:from-cyan-700 hover:to-cyan-800 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Download className={`w-5 h-5 ${isExporting ? 'animate-pulse' : ''}`} />
+            <span>{isExporting ? 'Exporting...' : 'Export JSON'}</span>
+          </button>
           <button
             onClick={handleGenerateInsights}
             disabled={isGeneratingInsights}

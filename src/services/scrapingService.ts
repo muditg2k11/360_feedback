@@ -327,4 +327,64 @@ export const scrapingService = {
       };
     }
   },
+
+  async exportToStructuredJSON(filters?: {
+    region?: string;
+    language?: string;
+    category?: string;
+    limit?: number;
+  }) {
+    try {
+      let query = supabase
+        .from('feedback_items')
+        .select('id, title, content, summary, url, region, original_language, category, collected_at, published_at, source_id')
+        .order('collected_at', { ascending: false });
+
+      if (filters?.region && filters.region !== 'all') {
+        query = query.eq('region', filters.region);
+      }
+      if (filters?.language && filters.language !== 'all') {
+        query = query.eq('original_language', filters.language);
+      }
+      if (filters?.category && filters.category !== 'all') {
+        query = query.eq('category', filters.category);
+      }
+      if (filters?.limit) {
+        query = query.limit(filters.limit);
+      }
+
+      const { data: feedbackItems, error } = await query;
+
+      if (error) throw error;
+
+      if (!feedbackItems || feedbackItems.length === 0) {
+        return { success: false, error: 'No data found with specified filters' };
+      }
+
+      const { data: sources } = await supabase
+        .from('media_sources')
+        .select('id, name');
+
+      const sourceMap = new Map(sources?.map(s => [s.id, s.name]) || []);
+
+      const structuredData = feedbackItems.map(item => ({
+        title: item.title,
+        source: item.source_id ? sourceMap.get(item.source_id) || 'Unknown' : 'Manual Entry',
+        summary: item.summary || 'Summary not yet generated',
+        date: item.published_at || item.collected_at,
+        region: item.region,
+        language: item.original_language,
+        category: item.category || 'Uncategorized',
+        url: item.url || null,
+      }));
+
+      return { success: true, data: structuredData, count: structuredData.length };
+    } catch (error) {
+      console.error('Error exporting to JSON:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  },
 };
