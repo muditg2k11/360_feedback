@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { indianStates } from '../constants';
-import { Search, Filter, Plus, ExternalLink, Clock, CheckCircle, Circle, Brain, Loader, RefreshCw } from 'lucide-react';
+import { Search, Filter, Plus, ExternalLink, Clock, CheckCircle, Circle, Brain, Loader, RefreshCw, FileText, Globe, MapPin } from 'lucide-react';
 import FeedbackDetailModal from '../components/FeedbackDetailModal';
 import { FeedbackItem, MediaSource } from '../types';
 import { dataService } from '../services/dataService';
@@ -103,6 +103,44 @@ export default function FeedbackCollection() {
       default:
         return 'bg-gray-100 text-gray-700 border-gray-200';
     }
+  };
+
+  const summarizeContent = (content: string, maxLength: number = 150): string => {
+    if (!content) return '';
+
+    // Remove extra whitespace
+    const cleaned = content.trim().replace(/\s+/g, ' ');
+
+    if (cleaned.length <= maxLength) {
+      return cleaned;
+    }
+
+    // Try to cut at sentence boundary
+    const sentences = cleaned.match(/[^.!?]+[.!?]+/g) || [];
+    let summary = '';
+
+    for (const sentence of sentences) {
+      if ((summary + sentence).length <= maxLength) {
+        summary += sentence;
+      } else {
+        break;
+      }
+    }
+
+    // If we got at least one sentence, return it
+    if (summary.length > 0) {
+      return summary.trim();
+    }
+
+    // Otherwise, cut at word boundary
+    const truncated = cleaned.substring(0, maxLength);
+    const lastSpace = truncated.lastIndexOf(' ');
+
+    if (lastSpace > maxLength * 0.8) {
+      return truncated.substring(0, lastSpace) + '...';
+    }
+
+    return truncated + '...';
   };
 
   const openDetailModal = (feedback: FeedbackItem) => {
@@ -216,6 +254,54 @@ export default function FeedbackCollection() {
         </div>
       </div>
 
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-5 border border-blue-200">
+          <div className="flex items-center justify-between mb-2">
+            <FileText className="w-8 h-8 text-blue-600" />
+            <div className="text-right">
+              <p className="text-2xl font-bold text-blue-900">{feedbackItems.length}</p>
+              <p className="text-xs text-blue-600 font-medium">Total Articles</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-5 border border-green-200">
+          <div className="flex items-center justify-between mb-2">
+            <CheckCircle className="w-8 h-8 text-green-600" />
+            <div className="text-right">
+              <p className="text-2xl font-bold text-green-900">
+                {feedbackItems.filter(f => f.status === 'analyzed').length}
+              </p>
+              <p className="text-xs text-green-600 font-medium">Analyzed</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-5 border border-purple-200">
+          <div className="flex items-center justify-between mb-2">
+            <Globe className="w-8 h-8 text-purple-600" />
+            <div className="text-right">
+              <p className="text-2xl font-bold text-purple-900">
+                {new Set(feedbackItems.map(f => f.original_language)).size}
+              </p>
+              <p className="text-xs text-purple-600 font-medium">Languages</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-5 border border-orange-200">
+          <div className="flex items-center justify-between mb-2">
+            <MapPin className="w-8 h-8 text-orange-600" />
+            <div className="text-right">
+              <p className="text-2xl font-bold text-orange-900">
+                {new Set(feedbackItems.map(f => f.region).filter(Boolean)).size}
+              </p>
+              <p className="text-xs text-orange-600 font-medium">Regions</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="relative">
@@ -305,16 +391,51 @@ export default function FeedbackCollection() {
                 </div>
               </div>
 
-              <p className="text-gray-700 mb-4 line-clamp-2">{feedback.content}</p>
+              <div className="mb-4">
+                <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-start space-x-2 mb-2">
+                    <div className="flex-shrink-0 mt-0.5">
+                      <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                        Summary ({feedback.original_language})
+                      </p>
+                      <p className="text-sm text-gray-800 leading-relaxed">
+                        {summarizeContent(feedback.content, 180)}
+                      </p>
+                    </div>
+                  </div>
 
-              {feedback.translated_content && feedback.original_language !== 'English' && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                  <p className="text-sm text-gray-600 mb-1">
-                    <span className="font-medium">Translation:</span>
-                  </p>
-                  <p className="text-sm text-gray-700">{feedback.translated_content}</p>
+                  {feedback.content.length > 180 && (
+                    <button
+                      onClick={() => openDetailModal(feedback)}
+                      className="text-xs text-blue-600 hover:text-blue-700 font-medium mt-2 flex items-center space-x-1"
+                    >
+                      <span>Read full content</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
-              )}
+
+                {feedback.translated_content && feedback.original_language !== 'English' && (
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4 mt-3">
+                    <div className="flex items-start space-x-2">
+                      <div className="flex-shrink-0 mt-0.5">
+                        <div className="w-2 h-2 rounded-full bg-blue-600"></div>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-1">
+                          English Translation
+                        </p>
+                        <p className="text-sm text-blue-900 leading-relaxed">
+                          {summarizeContent(feedback.translated_content, 180)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               <div className="flex items-center justify-between pt-4 border-t border-gray-200">
                 <div className="flex items-center space-x-4 text-sm text-gray-600">
