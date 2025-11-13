@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { indianStates } from '../constants';
-import { Search, Filter, Plus, ExternalLink, Clock, CheckCircle, Circle, Brain, Loader, RefreshCw, FileText, Globe, MapPin, Sparkles } from 'lucide-react';
+import { Search, Filter, Plus, ExternalLink, Clock, CheckCircle, Circle, Brain, Loader, RefreshCw, FileText, Globe, MapPin, Sparkles, TrendingUp, Lightbulb } from 'lucide-react';
 import FeedbackDetailModal from '../components/FeedbackDetailModal';
 import AddFeedbackModal from '../components/AddFeedbackModal';
 import { FeedbackItem, MediaSource } from '../types';
 import { dataService } from '../services/dataService';
-import { scrapingService } from '../services/scrapingService';
+import { scrapingService, InsightsResult } from '../services/scrapingService';
 
 export default function FeedbackCollection() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -23,6 +23,9 @@ export default function FeedbackCollection() {
   const [scrapeMessage, setScrapeMessage] = useState<string>('');
   const [isGeneratingSummaries, setIsGeneratingSummaries] = useState(false);
   const [summaryMessage, setSummaryMessage] = useState<string>('');
+  const [insights, setInsights] = useState<InsightsResult['insights'] | null>(null);
+  const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
+  const [showInsights, setShowInsights] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -224,6 +227,28 @@ export default function FeedbackCollection() {
     }
   };
 
+  const handleGenerateInsights = async () => {
+    setIsGeneratingInsights(true);
+    try {
+      const result = await scrapingService.generateInsights({
+        limit: 50,
+        region: regionFilter !== 'all' ? regionFilter : undefined,
+      });
+
+      if (result.success && result.insights) {
+        setInsights(result.insights);
+        setShowInsights(true);
+      } else {
+        alert(`Failed to generate insights: ${result.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error generating insights:', error);
+      alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsGeneratingInsights(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -269,6 +294,14 @@ export default function FeedbackCollection() {
           </div>
         </div>
         <div className="flex items-center space-x-3">
+          <button
+            onClick={handleGenerateInsights}
+            disabled={isGeneratingInsights}
+            className="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-orange-600 to-orange-700 text-white rounded-lg hover:from-orange-700 hover:to-orange-800 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <TrendingUp className={`w-5 h-5 ${isGeneratingInsights ? 'animate-bounce' : ''}`} />
+            <span>{isGeneratingInsights ? 'Analyzing...' : 'Generate Insights'}</span>
+          </button>
           <button
             onClick={handleGenerateSummaries}
             disabled={isGeneratingSummaries}
@@ -342,6 +375,77 @@ export default function FeedbackCollection() {
           </div>
         </div>
       </div>
+
+      {showInsights && insights && (
+        <div className="bg-gradient-to-br from-orange-50 to-yellow-50 rounded-xl shadow-lg border-2 border-orange-300 p-6 mb-6">
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center space-x-3">
+              <div className="w-12 h-12 rounded-full bg-orange-500 flex items-center justify-center">
+                <Lightbulb className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900">Real-Time Data Insights</h3>
+                <p className="text-sm text-gray-600">
+                  Analyzed {insights.articlesAnalyzed} articles | Sentiment:
+                  <span className={`ml-1 font-semibold ${
+                    insights.sentiment === 'positive' ? 'text-green-600' :
+                    insights.sentiment === 'negative' ? 'text-red-600' : 'text-gray-600'
+                  }`}>
+                    {insights.sentiment.charAt(0).toUpperCase() + insights.sentiment.slice(1)}
+                  </span>
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowInsights(false)}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <span className="text-2xl">&times;</span>
+            </button>
+          </div>
+
+          <div className="bg-white rounded-lg p-5 mb-4 border-l-4 border-orange-500">
+            <h4 className="text-lg font-bold text-gray-900 mb-2 flex items-center space-x-2">
+              <TrendingUp className="w-5 h-5 text-orange-600" />
+              <span>Headline</span>
+            </h4>
+            <p className="text-base text-gray-800 font-semibold leading-relaxed">
+              {insights.headline}
+            </p>
+          </div>
+
+          <div className="bg-white rounded-lg p-5 border-l-4 border-yellow-500">
+            <h4 className="text-lg font-bold text-gray-900 mb-3 flex items-center space-x-2">
+              <FileText className="w-5 h-5 text-yellow-600" />
+              <span>Key Findings</span>
+            </h4>
+            <ul className="space-y-3">
+              {insights.bulletPoints.map((point, index) => (
+                <li key={index} className="flex items-start space-x-3">
+                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500 text-white flex items-center justify-center text-sm font-bold mt-0.5">
+                    {index + 1}
+                  </div>
+                  <p className="text-gray-700 leading-relaxed flex-1">{point}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {insights.topTopics.length > 0 && (
+            <div className="mt-4 flex items-center space-x-2 flex-wrap">
+              <span className="text-sm font-semibold text-gray-700">Top Topics:</span>
+              {insights.topTopics.map((topic, index) => (
+                <span
+                  key={index}
+                  className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-sm font-medium"
+                >
+                  {topic}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -34,6 +34,18 @@ export interface SummaryResult {
   error?: string;
 }
 
+export interface InsightsResult {
+  success: boolean;
+  insights?: {
+    headline: string;
+    bulletPoints: string[];
+    articlesAnalyzed: number;
+    topTopics: string[];
+    sentiment: string;
+  };
+  error?: string;
+}
+
 export const scrapingService = {
   async scrapeNews(sourceId?: string): Promise<ScrapeResult> {
     try {
@@ -272,6 +284,45 @@ export const scrapingService = {
       return {
         success: false,
         count: 0,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  },
+
+  async generateInsights(filters?: {
+    limit?: number;
+    region?: string;
+    language?: string;
+    category?: string;
+  }): Promise<InsightsResult> {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      console.log('Generating insights from real-time data...');
+
+      const response = await fetch(`${FUNCTIONS_URL}/generate-insights`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify(filters || {}),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Insights generation failed:', response.status, errorText);
+        throw new Error(`Insights generation failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Insights generated:', result);
+      return result;
+    } catch (error) {
+      console.error('Error generating insights:', error);
+      return {
+        success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
