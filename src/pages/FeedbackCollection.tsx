@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { indianStates } from '../constants';
 import { Search, Filter, Plus, ExternalLink, Clock, CheckCircle, Circle, Brain, Loader, RefreshCw, FileText, Globe, MapPin, Sparkles } from 'lucide-react';
 import FeedbackDetailModal from '../components/FeedbackDetailModal';
+import AddFeedbackModal from '../components/AddFeedbackModal';
 import { FeedbackItem, MediaSource } from '../types';
 import { dataService } from '../services/dataService';
 import { scrapingService } from '../services/scrapingService';
@@ -582,30 +583,7 @@ export default function FeedbackCollection() {
         />
       )}
 
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
-          <div className="flex items-center justify-center min-h-screen px-4">
-            <div
-              className="fixed inset-0 bg-black bg-opacity-50"
-              onClick={() => setIsAddModalOpen(false)}
-            />
-            <div className="relative bg-white rounded-xl shadow-xl max-w-2xl w-full p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Add New Feedback</h3>
-              <p className="text-gray-600 mb-4">
-                This feature would integrate with media monitoring APIs and web scraping tools
-                to automatically collect feedback from various sources including newspapers,
-                TV channels, radio stations, and social media platforms.
-              </p>
-              <button
-                onClick={() => setIsAddModalOpen(false)}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {isAddModalOpen && <AddFeedbackModal onClose={() => setIsAddModalOpen(false)} onSuccess={loadFeedbackItems} mediaSources={mediaSources} />}
     </div>
   );
 }

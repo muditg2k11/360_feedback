@@ -39,8 +39,12 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Generate intelligent summary based on content analysis
-    const summary = generateIntelligentSummary(content, title, language);
+    console.log('Generating summary for:', title.substring(0, 50));
+
+    // Generate unique summary from actual content
+    const summary = generateContentBasedSummary(content, title, language);
+
+    console.log('Generated summary:', summary);
 
     // If feedbackId provided, update the database
     if (feedbackId) {
@@ -82,138 +86,137 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-function generateIntelligentSummary(content: string, title: string, language: string): string {
-  // Clean and normalize content
+function generateContentBasedSummary(content: string, title: string, language: string): string {
+  // Clean the content
   const cleanContent = content.replace(/\s+/g, ' ').trim();
   const cleanTitle = title.replace(/\s+/g, ' ').trim();
   
-  // Extract key information from content
-  const sentences = cleanContent.match(/[^.!?।]+[.!?।]+/g) || [cleanContent];
-  
-  // Identify key themes and entities
-  const keywords = extractKeywords(cleanContent, language);
-  const mainTopic = identifyMainTopic(cleanTitle, cleanContent, keywords);
-  const action = identifyAction(cleanContent, language);
-  const location = extractLocation(cleanContent, language);
-  
-  // Build intelligent summary
+  if (!cleanContent || cleanContent.length < 20) {
+    return cleanTitle.substring(0, 150);
+  }
+
+  // Split into sentences (handle multiple scripts)
+  const sentenceDelimiters = /[.!?।॥\u0964\u0965]+\s+/;
+  const sentences = cleanContent.split(sentenceDelimiters)
+    .map(s => s.trim())
+    .filter(s => s.length > 20); // Filter out very short fragments
+
+  if (sentences.length === 0) {
+    // If no proper sentences, take first 150 chars
+    return cleanContent.substring(0, 150) + (cleanContent.length > 150 ? '...' : '');
+  }
+
+  // Score sentences based on importance
+  const scoredSentences = sentences.map(sentence => ({
+    text: sentence,
+    score: calculateSentenceScore(sentence, cleanTitle, cleanContent)
+  }));
+
+  // Sort by score descending
+  scoredSentences.sort((a, b) => b.score - a.score);
+
+  // Take the most important sentence(s)
   let summary = '';
   
-  if (action && location) {
-    summary = `${location} ${action} related to ${mainTopic}.`;
-  } else if (action) {
-    summary = `${action} concerning ${mainTopic} in the region.`;
-  } else if (mainTopic) {
-    summary = `News coverage on ${mainTopic} and its impact on local communities.`;
-  } else {
-    // Fallback: Use first sentence or first 100 chars
-    if (sentences.length > 0) {
-      summary = sentences[0].trim().substring(0, 120);
-      if (summary.length === 120) summary += '...';
+  // Try to get a good summary length (100-150 chars)
+  for (const scored of scoredSentences) {
+    const potentialSummary = summary ? summary + ' ' + scored.text : scored.text;
+    
+    if (potentialSummary.length <= 150) {
+      summary = potentialSummary;
+    } else if (!summary) {
+      // If even the first sentence is too long, truncate it
+      summary = scored.text.substring(0, 147) + '...';
+      break;
     } else {
-      summary = cleanContent.substring(0, 100) + '...';
+      // We have enough content
+      break;
     }
   }
-  
-  return summary;
+
+  // If summary is still empty, use first sentence
+  if (!summary && sentences.length > 0) {
+    summary = sentences[0].substring(0, 150);
+    if (sentences[0].length > 150) summary += '...';
+  }
+
+  return summary || cleanContent.substring(0, 150) + '...';
 }
 
-function extractKeywords(content: string, language: string): string[] {
-  const keywords: string[] = [];
+function calculateSentenceScore(sentence: string, title: string, fullContent: string): number {
+  let score = 0;
+  const sentenceLower = sentence.toLowerCase();
+  const titleLower = title.toLowerCase();
   
-  // English keywords
-  const englishTerms = [
-    'government', 'minister', 'development', 'project', 'scheme', 'policy',
-    'infrastructure', 'metro', 'railway', 'road', 'education', 'school',
-    'farmer', 'agriculture', 'crop', 'healthcare', 'hospital', 'election',
-    'budget', 'economy', 'technology', 'digital', 'welfare', 'employment'
+  // Position bonus - earlier sentences are usually more important
+  const position = fullContent.toLowerCase().indexOf(sentenceLower);
+  const positionScore = 1 - (position / fullContent.length);
+  score += positionScore * 10;
+
+  // Length penalty/bonus - prefer medium length sentences
+  const words = sentence.split(/\s+/).length;
+  if (words >= 8 && words <= 25) {
+    score += 15;
+  } else if (words < 5 || words > 35) {
+    score -= 10;
+  }
+
+  // Title word overlap - sentences with words from title are important
+  const titleWords = titleLower.split(/\s+/).filter(w => w.length > 3);
+  let titleOverlap = 0;
+  for (const word of titleWords) {
+    if (sentenceLower.includes(word)) {
+      titleOverlap++;
+    }
+  }
+  score += titleOverlap * 5;
+
+  // Important keywords across all languages
+  const importantKeywords = [
+    // English
+    'announce', 'launch', 'new', 'plan', 'scheme', 'project', 'government', 
+    'minister', 'chief', 'president', 'will', 'today', 'year', 'crore', 'lakh',
+    'development', 'initiative', 'programme', 'policy',
+    
+    // Hindi
+    'घोषणा', 'नया', 'योजना', 'सरकार', 'मंत्री', 'विकास', 'करोड़',
+    
+    // Kannada
+    'ಘೋಷಣೆ', 'ಹೊಸ', 'ಯೋಜನೆ', 'ಸರ್ಕಾರ', 'ಮಂತ್ರಿ', 'ಅಭಿವೃದ್ಧಿ',
+    
+    // Tamil
+    'அறிவிப்பு', 'புதிய', 'திட்டம்', 'அரசு', 'அமைச்சர்', 'வளர்ச்சி',
+    
+    // Telugu
+    'ప్రకటన', 'కొత్త', 'పథకం', 'ప్రభుత్వం', 'మంత్రి', 'అభివృద్ధి',
+    
+    // Malayalam
+    'പ്രഖ്യാപനം', 'പുതിയ', 'പദ്ധതി', 'സർക്കാർ', 'മന്ത്രി', 'വികസനം',
+    
+    // Bengali
+    'ঘোষণা', 'নতুন', 'প্রকল্প', 'সরকার', 'মন্ত্রী', 'উন্নয়ন',
+    
+    // Marathi
+    'जाहीर', 'नवीन', 'योजना', 'सरकार', 'मंत्री', 'विकास'
   ];
-  
-  // Regional language keywords
-  const regionalTerms: { [key: string]: string[] } = {
-    'Kannada': ['ಸರ್ಕಾರ', 'ಅಭಿವೃದ್ಧಿ', 'ಯೋಜನೆ', 'ಮೆಟ್ರೋ', 'ರೈತ', 'ಶಿಕ್ಷಣ'],
-    'Tamil': ['அரசு', 'வளர்ச்சி', 'திட்டம்', 'மெட்ரோ', 'விவசாயி', 'கல்வி'],
-    'Telugu': ['ప్రభుత్వం', 'అభివృద్ధి', 'ప్రాజెక్ట్', 'మెట్రో', 'రైతు', 'విద్య'],
-    'Malayalam': ['സർക്കാർ', 'വികസനം', 'പദ്ധതി', 'മെട്രോ', 'കർഷക', 'വിദ്യാഭ്യാസം'],
-    'Hindi': ['सरकार', 'विकास', 'योजना', 'मेट्रो', 'किसान', 'शिक्षा'],
-    'Bengali': ['সরকার', 'উন্নয়ন', 'প্রকল্প', 'মেট্রো', 'কৃষক', 'শিক্ষা'],
-    'Marathi': ['सरकार', 'विकास', 'योजना', 'मेट्रो', 'शेतकरी', 'शिक्षण']
-  };
-  
-  const termsToCheck = [...englishTerms, ...(regionalTerms[language] || [])];
-  
-  for (const term of termsToCheck) {
-    if (content.includes(term)) {
-      keywords.push(term);
-    }
-  }
-  
-  return keywords;
-}
 
-function identifyMainTopic(title: string, content: string, keywords: string[]): string {
-  const combined = (title + ' ' + content).toLowerCase();
-  
-  // Topic categories with their indicators
-  const topics: { [key: string]: string[] } = {
-    'metro and urban transport': ['metro', 'মেট্রো', 'मेट्रो', 'ಮೆಟ್ರೋ', 'మెట్రో', 'மெட்ரோ', 'മെട്രോ', 'transport', 'railway'],
-    'agriculture and farmer welfare': ['farmer', 'agriculture', 'crop', 'किसान', 'রৈতু', 'ರೈತ', 'రైతు', 'விவசாயி', 'കർഷക', 'शेतकरी'],
-    'education and digital learning': ['education', 'school', 'digital', 'शिक्षा', 'শিক্ষা', 'ಶಿಕ್ಷಣ', 'విద్య', 'கல்வி', 'വിദ്യാഭ്യാസം', 'शिक्षण'],
-    'infrastructure development': ['infrastructure', 'development', 'project', 'construction', 'road', 'bridge'],
-    'healthcare initiatives': ['health', 'hospital', 'medical', 'healthcare', 'doctor', 'treatment'],
-    'economic policy': ['economy', 'budget', 'finance', 'economic', 'investment', 'gdp'],
-    'government schemes': ['scheme', 'policy', 'program', 'initiative', 'योजना', 'প্রকল্প', 'ಯೋಜನೆ', 'పథకం', 'திட்டம்', 'പദ്ധതി']
-  };
-  
-  for (const [topic, indicators] of Object.entries(topics)) {
-    for (const indicator of indicators) {
-      if (combined.includes(indicator.toLowerCase())) {
-        return topic;
-      }
+  let keywordCount = 0;
+  for (const keyword of importantKeywords) {
+    if (sentenceLower.includes(keyword.toLowerCase())) {
+      keywordCount++;
     }
   }
-  
-  return 'regional developments';
-}
+  score += keywordCount * 3;
 
-function identifyAction(content: string, language: string): string {
-  const combined = content.toLowerCase();
-  
-  const actions: { [key: string]: string[] } = {
-    'Government announces': ['announce', 'घोषणा', 'ঘোষণা', 'ಪ್ರಕಟ', 'ప్రకటన', 'அறிவிப்பு', 'പ്രഖ്യാപനം', 'जाहीर'],
-    'New initiative launched': ['launch', 'start', 'begin', 'inaugurate', 'प्रारंभ', 'শুরু', 'ಪ್ರಾರಂಭ', 'ప్రారంభం', 'தொடக்கம்', 'ആരംഭം'],
-    'Development project approved': ['approve', 'sanction', 'clear', 'स्वीकृत', 'অনুমোদন', 'ಅನುಮೋದನೆ', 'ఆమోదం', 'ஒப்புதல்', 'അംഗീകാരം'],
-    'Expansion planned': ['expand', 'extend', 'scale', 'विस्तार', 'সম্প্রসারণ', 'ವಿಸ್ತರಣೆ', 'విస్తరణ', 'விரிவாக்கம்', 'വിപുലീകരണം'],
-    'Initiative underway': ['underway', 'ongoing', 'progress', 'continue', 'implement']
-  };
-  
-  for (const [action, indicators] of Object.entries(actions)) {
-    for (const indicator of indicators) {
-      if (combined.includes(indicator.toLowerCase())) {
-        return action;
-      }
-    }
+  // Numbers and dates add specificity
+  if (/\d+/.test(sentence)) {
+    score += 5;
   }
-  
-  return '';
-}
 
-function extractLocation(content: string, language: string): string {
-  const locations = [
-    'Karnataka', 'Bangalore', 'Bengaluru', 'ಕರ್ನಾಟಕ', 'ಬೆಂಗಳೂರು',
-    'Tamil Nadu', 'Chennai', 'தமிழகம்', 'சென்னை',
-    'Telangana', 'Hyderabad', 'తెలంగాణ', 'హైదరాబాద్',
-    'Kerala', 'Thiruvananthapuram', 'കേരളം', 'തിരുവനന്തപുരം',
-    'Delhi', 'दिल्ली', 'UP', 'Uttar Pradesh', 'उत्तर प्रदेश',
-    'West Bengal', 'Kolkata', 'পশ্চিমবঙ্গ', 'কলকাতা',
-    'Maharashtra', 'Mumbai', 'महाराष्ट्र', 'मुंबई'
-  ];
-  
-  for (const location of locations) {
-    if (content.includes(location)) {
-      return location;
-    }
+  // Question sentences are usually not good summaries
+  if (sentence.includes('?')) {
+    score -= 20;
   }
-  
-  return '';
+
+  return score;
 }
