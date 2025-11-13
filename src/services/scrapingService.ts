@@ -28,6 +28,12 @@ export interface TranslationResult {
   error?: string;
 }
 
+export interface SummaryResult {
+  success: boolean;
+  summary?: string;
+  error?: string;
+}
+
 export const scrapingService = {
   async scrapeNews(sourceId?: string): Promise<ScrapeResult> {
     try {
@@ -175,6 +181,97 @@ export const scrapingService = {
       console.error('Error running scheduled scraper:', error);
       return {
         success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  },
+
+  async generateSummary(
+    feedbackId: string,
+    content: string,
+    title: string,
+    language: string
+  ): Promise<SummaryResult> {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      console.log('Generating summary for feedback:', feedbackId);
+
+      const response = await fetch(`${FUNCTIONS_URL}/generate-summary`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({
+          feedbackId,
+          content,
+          title,
+          language,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Summary generation failed:', response.status, errorText);
+        throw new Error(`Summary generation failed: ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log('Summary generated:', result);
+      return result;
+    } catch (error) {
+      console.error('Error generating summary:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  },
+
+  async generateSummariesForAll(): Promise<{ success: boolean; count: number; error?: string }> {
+    try {
+      // Get all feedback items without summaries
+      const { data: feedbackItems, error } = await supabase
+        .from('feedback_items')
+        .select('id, title, content, original_language')
+        .is('summary', null)
+        .limit(50); // Process in batches
+
+      if (error) throw error;
+
+      if (!feedbackItems || feedbackItems.length === 0) {
+        return { success: true, count: 0 };
+      }
+
+      console.log(`Generating summaries for ${feedbackItems.length} articles...`);
+
+      let successCount = 0;
+
+      // Process each item
+      for (const item of feedbackItems) {
+        const result = await this.generateSummary(
+          item.id,
+          item.content,
+          item.title,
+          item.original_language
+        );
+
+        if (result.success) {
+          successCount++;
+        }
+
+        // Small delay to avoid overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      return { success: true, count: successCount };
+    } catch (error) {
+      console.error('Error generating summaries for all:', error);
+      return {
+        success: false,
+        count: 0,
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     }

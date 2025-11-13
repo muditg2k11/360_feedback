@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { indianStates } from '../constants';
-import { Search, Filter, Plus, ExternalLink, Clock, CheckCircle, Circle, Brain, Loader, RefreshCw, FileText, Globe, MapPin } from 'lucide-react';
+import { Search, Filter, Plus, ExternalLink, Clock, CheckCircle, Circle, Brain, Loader, RefreshCw, FileText, Globe, MapPin, Sparkles } from 'lucide-react';
 import FeedbackDetailModal from '../components/FeedbackDetailModal';
 import { FeedbackItem, MediaSource } from '../types';
 import { dataService } from '../services/dataService';
@@ -20,6 +20,8 @@ export default function FeedbackCollection() {
   const [isScraping, setIsScraping] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [scrapeMessage, setScrapeMessage] = useState<string>('');
+  const [isGeneratingSummaries, setIsGeneratingSummaries] = useState(false);
+  const [summaryMessage, setSummaryMessage] = useState<string>('');
 
   useEffect(() => {
     loadData();
@@ -199,6 +201,28 @@ export default function FeedbackCollection() {
     }
   };
 
+  const handleGenerateSummaries = async () => {
+    setIsGeneratingSummaries(true);
+    setSummaryMessage('Generating AI summaries for articles...');
+    try {
+      const result = await scrapingService.generateSummariesForAll();
+      if (result.success) {
+        setSummaryMessage(`✓ Generated summaries for ${result.count} articles!`);
+        await loadFeedbackItems();
+        setTimeout(() => setSummaryMessage(''), 5000);
+      } else {
+        setSummaryMessage(`✗ Failed: ${result.error || 'Unknown error'}`);
+        setTimeout(() => setSummaryMessage(''), 5000);
+      }
+    } catch (error) {
+      console.error('Error generating summaries:', error);
+      setSummaryMessage(`✗ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setTimeout(() => setSummaryMessage(''), 5000);
+    } finally {
+      setIsGeneratingSummaries(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -233,9 +257,25 @@ export default function FeedbackCollection() {
                 {scrapeMessage}
               </p>
             )}
+            {summaryMessage && (
+              <p className={`text-sm mt-1 font-medium ${
+                summaryMessage.startsWith('✓') ? 'text-green-600' :
+                summaryMessage.startsWith('✗') ? 'text-red-600' : 'text-purple-600'
+              }`}>
+                {summaryMessage}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center space-x-3">
+          <button
+            onClick={handleGenerateSummaries}
+            disabled={isGeneratingSummaries}
+            className="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Sparkles className={`w-5 h-5 ${isGeneratingSummaries ? 'animate-pulse' : ''}`} />
+            <span>{isGeneratingSummaries ? 'Generating...' : 'Generate AI Summaries'}</span>
+          </button>
           <button
             onClick={handleScrapeNow}
             disabled={isScraping}
