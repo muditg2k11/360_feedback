@@ -29,9 +29,10 @@ Deno.serve(async (req: Request) => {
 
     const { feedbackId, content, title, language }: SummaryRequest = await req.json();
 
-    if (!content || !title) {
+    // CRITICAL: Accept even empty content - we'll generate from title
+    if (!title) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Content and title are required' }),
+        JSON.stringify({ success: false, error: 'Title is required' }),
         {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -39,10 +40,11 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    console.log('Generating summary for:', title.substring(0, 50));
+    console.log('Generating individual summary for:', title.substring(0, 50));
+    console.log('Content length:', content?.length || 0, 'chars');
 
-    // Generate unique summary from actual content (max 60 words)
-    const summary = generateContentBasedSummary(content, title, language);
+    // Generate unique summary from actual content (max 60 words, 2-4 sentences)
+    const summary = generateContentBasedSummary(content || '', title, language);
 
     console.log('Generated summary:', summary);
 
@@ -91,8 +93,17 @@ function generateContentBasedSummary(content: string, title: string, language: s
   const cleanContent = content.replace(/\s+/g, ' ').trim();
   const cleanTitle = title.replace(/\s+/g, ' ').trim();
 
+  // CRITICAL: NEVER skip any item - always generate a summary
+  // If content is missing or very short, use title as base
   if (!cleanContent || cleanContent.length < 20) {
-    return cleanTitle.substring(0, 60);
+    // Generate summary from title only (2-4 sentences format)
+    const titleWords = cleanTitle.split(/\s+/);
+    if (titleWords.length <= 60) {
+      // Title is already concise - use it as the summary
+      return cleanTitle + ' Details pending.';
+    }
+    // Title is long, take first 50 words
+    return titleWords.slice(0, 50).join(' ') + '... Further information to be collected.';
   }
 
   // Split into sentences (handle multiple scripts)
@@ -120,7 +131,7 @@ function generateContentBasedSummary(content: string, title: string, language: s
   // Sort by score descending
   scoredSentences.sort((a, b) => b.score - a.score);
 
-  // Build summary with max 60 words (approximately 2-3 sentences)
+  // Build summary with max 60 words (2-4 sentences)
   let summary = '';
   let wordCount = 0;
   const maxWords = 60;
@@ -141,7 +152,7 @@ function generateContentBasedSummary(content: string, title: string, language: s
       break;
     }
 
-    // If we have 2-3 good sentences, stop
+    // If we have 2-4 good sentences, stop
     if (wordCount >= 40 && summary.split(/[.!?।॥]+/).length >= 2) {
       break;
     }

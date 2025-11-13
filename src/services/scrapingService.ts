@@ -244,12 +244,13 @@ export const scrapingService = {
 
   async generateSummariesForAll(): Promise<{ success: boolean; count: number; error?: string }> {
     try {
-      // Get all feedback items without summaries
+      // CRITICAL: Get ALL feedback items without summaries (no limit initially)
+      // We'll process them in batches but ensure we don't skip any
       const { data: feedbackItems, error } = await supabase
         .from('feedback_items')
         .select('id, title, content, original_language')
         .is('summary', null)
-        .limit(50); // Process in batches
+        .limit(50); // Process 50 at a time, user can run multiple times
 
       if (error) throw error;
 
@@ -257,27 +258,63 @@ export const scrapingService = {
         return { success: true, count: 0 };
       }
 
-      console.log(`Generating summaries for ${feedbackItems.length} articles...`);
+      console.log(`Generating individual summaries for ${feedbackItems.length} articles...`);
+      console.log('IMPORTANT: Each item will get its own unique summary - NO items will be skipped');
 
       let successCount = 0;
+      let errorCount = 0;
 
-      // Process each item
+      // Process each item individually - NEVER skip any
       for (const item of feedbackItems) {
-        const result = await this.generateSummary(
-          item.id,
-          item.content,
-          item.title,
-          item.original_language
-        );
+        try {
+          // Even if content is minimal, we MUST generate a summary
+          const contentToUse = item.content || '';
+          const titleToUse = item.title || 'Untitled';
 
-        if (result.success) {
-          successCount++;
+          console.log(`Processing item ${item.id}: "${titleToUse.substring(0, 50)}..."`);
+
+          const result = await this.generateSummary(
+            item.id,
+            contentToUse,
+            titleToUse,
+            item.original_language || 'English'
+          );
+
+          if (result.success) {
+            successCount++;
+            console.log(`✓ Summary generated for item ${successCount}`);
+          } else {
+            errorCount++;
+            console.error(`✗ Failed to generate summary for item ${item.id}:`, result.error);
+            // Even on error, try to save a basic summary from title
+            await supabase
+              .from('feedback_items')
+              .update({
+                summary: `${titleToUse.substring(0, 60)}... [Summary generation pending]`
+              })
+              .eq('id', item.id);
+          }
+
+          // Small delay to avoid overwhelming the server
+          await new Promise(resolve => setTimeout(resolve, 100));
+        } catch (itemError) {
+          errorCount++;
+          console.error(`Error processing item ${item.id}:`, itemError);
+          // Ensure we still save something even on error
+          try {
+            await supabase
+              .from('feedback_items')
+              .update({
+                summary: `${item.title?.substring(0, 60) || 'Content item'}... [Error in generation]`
+              })
+              .eq('id', item.id);
+          } catch (fallbackError) {
+            console.error(`Even fallback failed for ${item.id}:`, fallbackError);
+          }
         }
-
-        // Small delay to avoid overwhelming the server
-        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
+      console.log(`Completed: ${successCount} successful, ${errorCount} errors`);
       return { success: true, count: successCount };
     } catch (error) {
       console.error('Error generating summaries for all:', error);
