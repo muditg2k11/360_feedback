@@ -43,6 +43,7 @@ export interface FeedbackItem {
   source?: MediaSource;
   title: string;
   content: string;
+  summary?: string;
   original_language: string;
   translated_content?: string;
   url?: string;

@@ -392,44 +392,75 @@ export default function FeedbackCollection() {
               </div>
 
               <div className="mb-4">
-                <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-4">
-                  <div className="flex items-start space-x-2 mb-2">
-                    <div className="flex-shrink-0 mt-0.5">
-                      <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
-                        Summary ({feedback.original_language})
-                      </p>
-                      <p className="text-sm text-gray-800 leading-relaxed">
-                        {summarizeContent(feedback.content, 180)}
-                      </p>
-                    </div>
-                  </div>
-
-                  {feedback.content.length > 180 && (
-                    <button
-                      onClick={() => openDetailModal(feedback)}
-                      className="text-xs text-blue-600 hover:text-blue-700 font-medium mt-2 flex items-center space-x-1"
-                    >
-                      <span>Read full content</span>
-                      <ExternalLink className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-
-                {feedback.translated_content && feedback.original_language !== 'English' && (
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg p-4 mt-3">
-                    <div className="flex items-start space-x-2">
-                      <div className="flex-shrink-0 mt-0.5">
-                        <div className="w-2 h-2 rounded-full bg-blue-600"></div>
+                {feedback.summary ? (
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm">
+                    <div className="flex items-start space-x-3">
+                      <div className="flex-shrink-0 mt-1">
+                        <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
+                          <FileText className="w-4 h-4 text-white" />
+                        </div>
                       </div>
                       <div className="flex-1">
-                        <p className="text-xs font-semibold text-blue-700 uppercase tracking-wider mb-1">
-                          English Translation
+                        <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2 flex items-center space-x-2">
+                          <span>AI-Generated Summary</span>
+                          <span className="px-2 py-0.5 bg-blue-200 text-blue-800 rounded-full text-[10px]">
+                            {feedback.original_language}
+                          </span>
                         </p>
-                        <p className="text-sm text-blue-900 leading-relaxed">
-                          {summarizeContent(feedback.translated_content, 180)}
+                        <p className="text-sm text-gray-800 leading-relaxed font-medium">
+                          {feedback.summary}
+                        </p>
+                        <button
+                          onClick={() => openDetailModal(feedback)}
+                          className="text-xs text-blue-600 hover:text-blue-700 font-semibold mt-3 flex items-center space-x-1 hover:underline"
+                        >
+                          <span>View full article details</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-start space-x-2 mb-2">
+                      <div className="flex-shrink-0 mt-0.5">
+                        <div className="w-2 h-2 rounded-full bg-gray-500"></div>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
+                          Content Preview ({feedback.original_language})
+                        </p>
+                        <p className="text-sm text-gray-800 leading-relaxed">
+                          {summarizeContent(feedback.content, 180)}
+                        </p>
+                      </div>
+                    </div>
+                    {feedback.content.length > 180 && (
+                      <button
+                        onClick={() => openDetailModal(feedback)}
+                        className="text-xs text-blue-600 hover:text-blue-700 font-medium mt-2 flex items-center space-x-1"
+                      >
+                        <span>Read full content</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {feedback.translated_content && feedback.original_language !== 'English' && (
+                  <div className="bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-lg p-4 mt-3 shadow-sm">
+                    <div className="flex items-start space-x-3">
+                      <div className="flex-shrink-0 mt-1">
+                        <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center">
+                          <Globe className="w-4 h-4 text-white" />
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-xs font-bold text-green-700 uppercase tracking-wider mb-2">
+                          English Translation Available
+                        </p>
+                        <p className="text-sm text-gray-800 leading-relaxed">
+                          {summarizeContent(feedback.translated_content, 150)}
                         </p>
                       </div>
                     </div>
