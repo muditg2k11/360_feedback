@@ -29,7 +29,6 @@ Deno.serve(async (req: Request) => {
 
     const { feedbackId, content, title, language }: SummaryRequest = await req.json();
 
-    // CRITICAL: Accept even empty content - we'll generate from title
     if (!title) {
       return new Response(
         JSON.stringify({ success: false, error: 'Title is required' }),
@@ -40,15 +39,12 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    console.log('Generating individual summary for:', title.substring(0, 50));
-    console.log('Content length:', content?.length || 0, 'chars');
+    console.log('Generating insightful summary for:', title.substring(0, 50));
 
-    // Generate unique summary from actual content (max 60 words, 2-4 sentences)
     const summary = generateContentBasedSummary(content || '', title, language);
 
     console.log('Generated summary:', summary);
 
-    // If feedbackId provided, update the database
     if (feedbackId) {
       const { error: updateError } = await supabase
         .from('feedback_items')
@@ -76,9 +72,9 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error('Error generating summary:', error);
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+      JSON.stringify({
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error'
       }),
       {
         status: 500,
@@ -89,159 +85,213 @@ Deno.serve(async (req: Request) => {
 });
 
 function generateContentBasedSummary(content: string, title: string, language: string): string {
-  // Clean the content
   const cleanContent = content.replace(/\s+/g, ' ').trim();
   const cleanTitle = title.replace(/\s+/g, ' ').trim();
 
-  // CRITICAL: NEVER skip any item - always generate a summary
-  // If content is missing or very short, use title as base
   if (!cleanContent || cleanContent.length < 20) {
-    // Generate summary from title only (2-4 sentences format)
-    const titleWords = cleanTitle.split(/\s+/);
-    if (titleWords.length <= 60) {
-      // Title is already concise - use it as the summary
-      return cleanTitle + ' Details pending.';
-    }
-    // Title is long, take first 50 words
-    return titleWords.slice(0, 50).join(' ') + '... Further information to be collected.';
+    return generateInsightFromTitle(cleanTitle);
   }
 
-  // Split into sentences (handle multiple scripts)
-  const sentenceDelimiters = /[.!?।॥]+\s+/;
-  const sentences = cleanContent.split(sentenceDelimiters)
-    .map(s => s.trim())
-    .filter(s => s.length > 20); // Filter out very short fragments
+  const insights = extractKeyInsights(cleanContent, cleanTitle);
+  const summary = buildInsightfulSummary(insights, cleanContent, cleanTitle);
 
-  if (sentences.length === 0) {
-    // If no proper sentences, count words and limit to 60 words
-    const words = cleanContent.split(/\s+/);
-    if (words.length <= 60) {
-      return cleanContent;
-    }
-    return words.slice(0, 60).join(' ') + '...';
-  }
-
-  // Score sentences based on importance
-  const scoredSentences = sentences.map(sentence => ({
-    text: sentence,
-    score: calculateSentenceScore(sentence, cleanTitle, cleanContent),
-    wordCount: sentence.split(/\s+/).length
-  }));
-
-  // Sort by score descending
-  scoredSentences.sort((a, b) => b.score - a.score);
-
-  // Build summary with max 60 words (2-4 sentences)
-  let summary = '';
-  let wordCount = 0;
-  const maxWords = 60;
-
-  for (const scored of scoredSentences) {
-    const potentialWordCount = wordCount + scored.wordCount;
-
-    if (potentialWordCount <= maxWords) {
-      summary = summary ? summary + ' ' + scored.text : scored.text;
-      wordCount = potentialWordCount;
-    } else if (!summary) {
-      // If even the first sentence exceeds 60 words, truncate it
-      const words = scored.text.split(/\s+/);
-      summary = words.slice(0, maxWords).join(' ') + '...';
-      break;
-    } else {
-      // We have enough content
-      break;
-    }
-
-    // If we have 2-4 good sentences, stop
-    if (wordCount >= 40 && summary.split(/[.!?।॥]+/).length >= 2) {
-      break;
-    }
-  }
-
-  // If summary is still empty, use first sentence with word limit
-  if (!summary && sentences.length > 0) {
-    const words = sentences[0].split(/\s+/);
-    summary = words.slice(0, maxWords).join(' ');
-    if (words.length > maxWords) summary += '...';
-  }
-
-  return summary || cleanContent.split(/\s+/).slice(0, maxWords).join(' ') + '...';
+  return summary;
 }
 
-function calculateSentenceScore(sentence: string, title: string, fullContent: string): number {
-  let score = 0;
-  const sentenceLower = sentence.toLowerCase();
+function generateInsightFromTitle(title: string): string {
   const titleLower = title.toLowerCase();
-  
-  // Position bonus - earlier sentences are usually more important
-  const position = fullContent.toLowerCase().indexOf(sentenceLower);
-  const positionScore = 1 - (position / fullContent.length);
-  score += positionScore * 10;
+  let insight = '';
 
-  // Length penalty/bonus - prefer medium length sentences
-  const words = sentence.split(/\s+/).length;
-  if (words >= 8 && words <= 25) {
-    score += 15;
-  } else if (words < 5 || words > 35) {
-    score -= 10;
+  if (titleLower.includes('announce') || titleLower.includes('launch') || titleLower.includes('घोषणा')) {
+    insight = `This announcement signals a new policy initiative. ${title} The move indicates government focus on this sector and aims to create positive impact through targeted implementation.`;
+  }
+  else if (titleLower.includes('metro') || titleLower.includes('road') || titleLower.includes('infrastructure')) {
+    insight = `${title} This infrastructure development aims to improve connectivity and economic growth. The project will benefit local communities through enhanced transportation and regional development opportunities.`;
+  }
+  else if (titleLower.includes('exam') || titleLower.includes('admission') || titleLower.includes('education')) {
+    insight = `${title} This educational development affects students and academic institutions. It reflects efforts to improve accessibility, standardize processes, and enhance learning opportunities for beneficiaries.`;
+  }
+  else if (titleLower.includes('farmer') || titleLower.includes('crop') || titleLower.includes('agriculture')) {
+    insight = `${title} This agricultural initiative targets rural welfare and farming sector improvements. The measure aims to support farmers' livelihoods, boost productivity, and ensure sustainable growth.`;
+  }
+  else if (titleLower.includes('health') || titleLower.includes('hospital') || titleLower.includes('medical')) {
+    insight = `${title} This healthcare initiative aims to improve medical services and public health infrastructure. The development addresses accessibility concerns and quality of care for citizens.`;
+  }
+  else if (titleLower.includes('budget') || titleLower.includes('crore') || titleLower.includes('economic')) {
+    insight = `${title} This financial development has significant economic implications for the region. The allocation reflects government priorities, fiscal planning, and commitment to sectoral growth.`;
+  }
+  else {
+    insight = `${title} This development is significant for the region and reflects current policy priorities. Further implementation details will provide context on timeline, impact, and beneficiary reach.`;
   }
 
-  // Title word overlap - sentences with words from title are important
-  const titleWords = titleLower.split(/\s+/).filter(w => w.length > 3);
-  let titleOverlap = 0;
-  for (const word of titleWords) {
-    if (sentenceLower.includes(word)) {
-      titleOverlap++;
+  const words = insight.split(/\s+/);
+  if (words.length > 60) {
+    return words.slice(0, 60).join(' ') + '...';
+  }
+  return insight;
+}
+
+function extractKeyInsights(content: string, title: string): any {
+  const insights = {
+    amounts: [] as string[],
+    locations: [] as string[],
+    officials: [] as string[],
+    dates: [] as string[],
+    beneficiaries: [] as string[]
+  };
+
+  const numberMatches = content.match(/\d+\s*(?:crore|lakh|billion|million|thousand|करोड़|लाख)/gi);
+  if (numberMatches) insights.amounts = numberMatches.slice(0, 2);
+
+  const locationPattern = /(?:karnataka|tamil nadu|telangana|kerala|maharashtra|delhi|mumbai|bangalore|chennai|hyderabad|pune|bengaluru)/gi;
+  const locationMatches = content.match(locationPattern);
+  if (locationMatches) insights.locations = [...new Set(locationMatches)].slice(0, 2);
+
+  const officialPattern = /(?:minister|chief minister|cm|prime minister|pm|secretary|governor|मंत्री)\s+\w+/gi;
+  const officialMatches = content.match(officialPattern);
+  if (officialMatches) insights.officials = [...new Set(officialMatches)].slice(0, 2);
+
+  const datePattern = /(?:\d{4}|\d{1,2}\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)|next year|by \d{4})/gi;
+  const dateMatches = content.match(datePattern);
+  if (dateMatches) insights.dates = [...new Set(dateMatches)].slice(0, 2);
+
+  const beneficiaryPattern = /(?:\d+\s+(?:million|lakh|thousand|crore)\s+(?:people|citizens|farmers|students|patients|families|beneficiaries))/gi;
+  const beneficiaryMatches = content.match(beneficiaryPattern);
+  if (beneficiaryMatches) insights.beneficiaries = beneficiaryMatches.slice(0, 1);
+
+  return insights;
+}
+
+function buildInsightfulSummary(insights: any, content: string, title: string): string {
+  const sentences: string[] = [];
+  let currentWords = 0;
+  const maxWords = 60;
+
+  const mainAction = extractMainAction(content, title);
+  if (mainAction) {
+    sentences.push(mainAction);
+    currentWords += mainAction.split(/\s+/).length;
+  }
+
+  if (currentWords < 50) {
+    const details = buildDetailsFromInsights(insights);
+    if (details) {
+      sentences.push(details);
+      currentWords += details.split(/\s+/).length;
     }
   }
-  score += titleOverlap * 5;
 
-  // Important keywords across all languages
-  const importantKeywords = [
-    // English
-    'announce', 'launch', 'new', 'plan', 'scheme', 'project', 'government', 
-    'minister', 'chief', 'president', 'will', 'today', 'year', 'crore', 'lakh',
-    'development', 'initiative', 'programme', 'policy',
-    
-    // Hindi
-    'घोषणा', 'नया', 'योजना', 'सरकार', 'मंत्री', 'विकास', 'करोड़',
-    
-    // Kannada
-    'ಘೋಷಣೆ', 'ಹೊಸ', 'ಯೋಜನೆ', 'ಸರ್ಕಾರ', 'ಮಂತ್ರಿ', 'ಅಭಿವೃದ್ಧಿ',
-    
-    // Tamil
-    'அறிவிப்பு', 'புதிய', 'திட்டம்', 'அரசு', 'அமைச்சர்', 'வளர்ச்சி',
-    
-    // Telugu
-    'ప్రకటన', 'కొత్త', 'పథకం', 'ప్రభుత్వం', 'మంత్రి', 'అభివృద్ధి',
-    
-    // Malayalam
-    'പ്രഖ്യാപനം', 'പുതിയ', 'പദ്ധതി', 'സർക്കാർ', 'മന്ത്രി', 'വികസനം',
-    
-    // Bengali
-    'ঘোষণা', 'নতুন', 'প্রকল্প', 'সরকার', 'মন্ত্রী', 'উন্নয়ন',
-    
-    // Marathi
-    'जाहीर', 'नवीन', 'योजना', 'सरकार', 'मंत्री', 'विकास'
+  if (currentWords < 45) {
+    const impact = extractImpact(content, title, insights);
+    if (impact) {
+      sentences.push(impact);
+      currentWords += impact.split(/\s+/).length;
+    }
+  }
+
+  if (currentWords < 50 && insights.beneficiaries.length > 0) {
+    sentences.push(`This will benefit ${insights.beneficiaries[0]}.`);
+  }
+
+  let summary = sentences.join(' ');
+
+  const words = summary.split(/\s+/);
+  if (words.length > maxWords) {
+    summary = words.slice(0, maxWords).join(' ') + '...';
+  }
+
+  if (!summary || summary.length < 30) {
+    return extractTopSentencesWithContext(content, title);
+  }
+
+  return summary;
+}
+
+function extractMainAction(content: string, title: string): string {
+  const actionPatterns = [
+    /(?:announced|launched|introduced|inaugurated|started|implemented|expanded)\s+[^.!?।॥]{20,100}/i,
+    /(?:will|plans to|aims to|proposes to|seeks to)\s+[^.!?।॥]{20,100}/i,
+    /(?:government|minister|chief minister|state)\s+[^.!?।॥]{20,100}[.!?।॥]/i
   ];
 
-  let keywordCount = 0;
-  for (const keyword of importantKeywords) {
-    if (sentenceLower.includes(keyword.toLowerCase())) {
-      keywordCount++;
+  for (const pattern of actionPatterns) {
+    const match = content.match(pattern);
+    if (match) {
+      let sentence = match[0].trim();
+      sentence = sentence.replace(/[.!?।॥]+$/, '') + '.';
+      return sentence.charAt(0).toUpperCase() + sentence.slice(1);
     }
   }
-  score += keywordCount * 3;
 
-  // Numbers and dates add specificity
-  if (/\d+/.test(sentence)) {
-    score += 5;
+  return title + ' marks a significant policy development in the sector.';
+}
+
+function buildDetailsFromInsights(insights: any): string {
+  const details: string[] = [];
+
+  if (insights.amounts.length > 0) {
+    details.push(`involving ${insights.amounts[0]}`);
   }
 
-  // Question sentences are usually not good summaries
-  if (sentence.includes('?')) {
-    score -= 20;
+  if (insights.locations.length > 0) {
+    details.push(`in ${insights.locations.join(' and ')}`);
   }
 
-  return score;
+  if (insights.dates.length > 0) {
+    details.push(`with target timeline of ${insights.dates[0]}`);
+  }
+
+  if (details.length === 0) return '';
+
+  return 'The initiative, ' + details.join(', ') + ', demonstrates strategic planning.';
+}
+
+function extractImpact(content: string, title: string, insights: any): string {
+  const contentLower = content.toLowerCase();
+
+  const impactPatterns = [
+    /(?:will benefit|aims to|expected to|designed to|help|improve|enhance|boost)\s+[^.!?।॥]{20,80}/i,
+    /(?:impact|effect|create|enable|facilitate|strengthen)\s+[^.!?।॥]{20,80}/i
+  ];
+
+  for (const pattern of impactPatterns) {
+    const match = content.match(pattern);
+    if (match) {
+      let sentence = match[0].trim();
+      sentence = sentence.replace(/[.!?।॥]+$/, '') + '.';
+      return sentence.charAt(0).toUpperCase() + sentence.slice(1);
+    }
+  }
+
+  if (contentLower.includes('infrastructure') || contentLower.includes('metro') || contentLower.includes('road')) {
+    return 'This infrastructure push will improve connectivity, reduce travel time, and stimulate regional economic growth.';
+  }
+  if (contentLower.includes('education') || contentLower.includes('student') || contentLower.includes('exam')) {
+    return 'The measure aims to enhance educational opportunities, improve access, and standardize learning outcomes for students.';
+  }
+  if (contentLower.includes('farmer') || contentLower.includes('agriculture') || contentLower.includes('crop')) {
+    return 'This initiative is expected to boost agricultural productivity, increase farmer incomes, and ensure food security.';
+  }
+  if (contentLower.includes('health') || contentLower.includes('hospital') || contentLower.includes('medical')) {
+    return 'The development will enhance healthcare accessibility, improve quality of medical services, and benefit public health outcomes.';
+  }
+
+  return 'This strategic move is expected to create positive socio-economic outcomes and benefit local communities.';
+}
+
+function extractTopSentencesWithContext(content: string, title: string): string {
+  const sentenceDelimiters = /[.!?।॥]+\s+/;
+  const sentences = content.split(sentenceDelimiters)
+    .map(s => s.trim())
+    .filter(s => s.length > 20)
+    .slice(0, 3);
+
+  const combined = sentences.join('. ');
+  const words = combined.split(/\s+/);
+
+  if (words.length <= 60) {
+    return combined + '.';
+  }
+
+  return words.slice(0, 60).join(' ') + '...';
 }
