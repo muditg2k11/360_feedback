@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Bias Detection</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 100px;
+      padding: 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: inherit;
+      margin-bottom: 15px;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+    button:disabled {
+      background: #9ca3af;
+      cursor: not-allowed;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 4px;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+    }
+    .error {
+      background: #fee2e2;
+      border-color: #fca5a5;
+      color: #991b1b;
+    }
+    .success {
+      background: #d1fae5;
+      border-color: #6ee7b7;
+      color: #065f46;
+    }
+    pre {
+      background: #1f2937;
+      color: #f3f4f6;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+      font-size: 13px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 500;
+      color: #374151;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 Test Bias Detection Function</h1>
+    <p style="color: #6b7280; margin-bottom: 30px;">
+      Test the detect-bias edge function to see if it's working properly.
+    </p>
+
+    <div>
+      <label for="title">Article Title:</label>
+      <textarea
+        id="title"
+        placeholder="Enter article title...">BJP wins Maharashtra election with historic majority</textarea>
+    </div>
+
+    <div>
+      <label for="content">Article Content:</label>
+      <textarea
+        id="content"
+        placeholder="Enter article content...">The ruling party secured a landslide victory in the state assembly elections. Political analysts say this represents a major shift in voter sentiment. The opposition suffered significant losses across all regions.</textarea>
+    </div>
+
+    <button id="testBtn" onclick="testBiasDetection()">
+      Test Bias Detection
+    </button>
+
+    <div id="result"></div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://yeggkvzngggjfbwkginb.supabase.co';
+    const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllZ2drdnpuZ2dnamZid2tnaW5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwMjI5OTcsImV4cCI6MjA3NTU5ODk5N30.gnigRkVGoq0uiVwrPtKxm5XTWCrr1k7q2aL3ep4Q9so';
+
+    async function testBiasDetection() {
+      const title = document.getElementById('title').value;
+      const content = document.getElementById('content').value;
+      const resultDiv = document.getElementById('result');
+      const button = document.getElementById('testBtn');
+
+      if (!title || !content) {
+        resultDiv.innerHTML = '<div class="result error">Please enter both title and content</div>';
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = 'Testing...';
+      resultDiv.innerHTML = '';
+
+      try {
+        console.log('Calling detect-bias function...');
+
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/detect-bias`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${ANON_KEY}`,
+            'apikey': ANON_KEY,
+          },
+          body: JSON.stringify({
+            title: title,
+            content: content
+          })
+        });
+
+        const responseText = await response.text();
+        console.log('Response status:', response.status);
+        console.log('Response text:', responseText);
+
+        if (response.ok) {
+          const data = JSON.parse(responseText);
+
+          if (data.success) {
+            const analysis = data.analysis;
+            resultDiv.innerHTML = `
+              <div class="result success">
+                <h3>✅ Bias Detection Working!</h3>
+                <p><strong>Overall Score:</strong> ${analysis.overall_score.toFixed(1)}/100</p>
+                <p><strong>Classification:</strong> ${analysis.overall_classification}</p>
+                <p><strong>Political Bias:</strong> ${analysis.political_bias.score.toFixed(1)}%</p>
+                <p><strong>Regional Bias:</strong> ${analysis.regional_bias.score.toFixed(1)}%</p>
+                <p><strong>Sentiment Bias:</strong> ${analysis.sentiment_bias.score.toFixed(1)}%</p>
+                <p><strong>Source Reliability:</strong> ${analysis.source_reliability_bias.score.toFixed(1)}%</p>
+                <p><strong>Representation Bias:</strong> ${analysis.representation_bias.score.toFixed(1)}%</p>
+                <p><strong>Language Bias:</strong> ${analysis.language_bias.score.toFixed(1)}%</p>
+              </div>
+              <details style="margin-top: 15px;">
+                <summary style="cursor: pointer; font-weight: 500;">View Full Response</summary>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+              </details>
+            `;
+          } else {
+            resultDiv.innerHTML = `
+              <div class="result error">
+                <h3>❌ Function returned error</h3>
+                <pre>${JSON.stringify(data, null, 2)}</pre>
+              </div>
+            `;
+          }
+        } else {
+          resultDiv.innerHTML = `
+            <div class="result error">
+              <h3>❌ HTTP Error ${response.status}</h3>
+              <p>The function might not be deployed or has an error.</p>
+              <pre>${responseText}</pre>
+            </div>
+          `;
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        resultDiv.innerHTML = `
+          <div class="result error">
+            <h3>❌ Network Error</h3>
+            <p>${error.message}</p>
+            <p>Make sure the detect-bias function is deployed.</p>
+          </div>
+        `;
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Test Bias Detection';
+      }
+    }
+  </script>
+</body>
+</html>
