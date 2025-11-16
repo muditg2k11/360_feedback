@@ -107,12 +107,22 @@ function detectBias(text: string, title: string, originalContent: string): BiasA
   const lowerText = text.toLowerCase();
   const lowerTitle = title.toLowerCase();
 
+  const textLength = text.length;
+  const lengthMultiplier = textLength > 800 ? 1.2 : textLength > 500 ? 1.1 : 1.0;
+
   const politicalBias = analyzePoliticalBias(lowerText, lowerTitle);
   const regionalBias = analyzeRegionalBias(lowerText, lowerTitle);
   const sentimentBias = analyzeSentimentBias(lowerText, lowerTitle);
   const sourceReliabilityBias = analyzeSourceReliability(lowerText, lowerTitle);
   const representationBias = analyzeRepresentationBias(lowerText, lowerTitle);
   const languageBias = analyzeLanguageBias(lowerText, lowerTitle, originalContent);
+
+  politicalBias.score = Math.min(100, politicalBias.score * lengthMultiplier);
+  regionalBias.score = Math.min(100, regionalBias.score * lengthMultiplier);
+  sentimentBias.score = Math.min(100, sentimentBias.score * lengthMultiplier);
+  sourceReliabilityBias.score = Math.min(100, sourceReliabilityBias.score * lengthMultiplier);
+  representationBias.score = Math.min(100, representationBias.score * lengthMultiplier);
+  languageBias.score = Math.min(100, languageBias.score * lengthMultiplier);
 
   const overallScore = (
     politicalBias.score +
@@ -124,9 +134,9 @@ function detectBias(text: string, title: string, originalContent: string): BiasA
   ) / 6;
 
   let classification: 'High Bias' | 'Medium Bias' | 'Low Bias';
-  if (overallScore >= 50) {
+  if (overallScore >= 65) {
     classification = 'High Bias';
-  } else if (overallScore >= 25) {
+  } else if (overallScore >= 45) {
     classification = 'Medium Bias';
   } else {
     classification = 'Low Bias';
@@ -145,9 +155,17 @@ function detectBias(text: string, title: string, originalContent: string): BiasA
 }
 
 function analyzePoliticalBias(text: string, title: string): BiasScore {
-  let score = 15;
+  let score = 35;
   const evidence: string[] = [];
   const explanations: string[] = [];
+
+  const politicalKeywords = ['election', 'vote', 'party', 'minister', 'government', 'politics', 'pm', 'chief minister', 'mla', 'mp', 'bjp', 'congress', 'parliament', 'assembly'];
+  const hasPoliticalContent = politicalKeywords.some(k => text.includes(k));
+
+  if (hasPoliticalContent) {
+    score += 15;
+    explanations.push('Political content inherently carries institutional and ideological bias');
+  }
 
   const politicalParties = [
     { name: 'BJP', keywords: ['bjp', 'bharatiya janata', 'modi', 'narendra modi', 'saffron', 'nda', 'lotus'] },
@@ -270,9 +288,17 @@ function analyzePoliticalBias(text: string, title: string): BiasScore {
 }
 
 function analyzeRegionalBias(text: string, title: string): BiasScore {
-  let score = 15;
+  let score = 40;
   const evidence: string[] = [];
   const explanations: string[] = [];
+
+  const regionalKeywords = ['state', 'region', 'city', 'district', 'area', 'zone', 'territory'];
+  const hasRegionalContent = regionalKeywords.some(k => text.includes(k));
+
+  if (hasRegionalContent) {
+    score += 10;
+    explanations.push('Geographic content typically reflects location-based editorial bias');
+  }
 
   const regions = [
     { name: 'North India', keywords: ['delhi', 'punjab', 'haryana', 'up', 'uttar pradesh', 'rajasthan', 'uttarakhand', 'himachal', 'ncr', 'capital'] },
@@ -376,7 +402,7 @@ function analyzeRegionalBias(text: string, title: string): BiasScore {
 }
 
 function analyzeSentimentBias(text: string, title: string): BiasScore {
-  let score = 20;
+  let score = 45;
   const evidence: string[] = [];
   const explanations: string[] = [];
 
@@ -500,7 +526,7 @@ function analyzeSentimentBias(text: string, title: string): BiasScore {
 }
 
 function analyzeSourceReliability(text: string, title: string): BiasScore {
-  let score = 25;
+  let score = 50;
   const evidence: string[] = [];
   const explanations: string[] = [];
 
@@ -609,7 +635,7 @@ function analyzeSourceReliability(text: string, title: string): BiasScore {
 }
 
 function analyzeRepresentationBias(text: string, title: string): BiasScore {
-  let score = 20;
+  let score = 45;
   const evidence: string[] = [];
   const explanations: string[] = [];
 
@@ -723,7 +749,7 @@ function analyzeRepresentationBias(text: string, title: string): BiasScore {
 }
 
 function analyzeLanguageBias(text: string, title: string, originalText: string): BiasScore {
-  let score = 20;
+  let score = 40;
   const evidence: string[] = [];
   const explanations: string[] = [];
 
