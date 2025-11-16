@@ -264,59 +264,6 @@ export default function BiasDetection() {
                     </button>
                   </div>
                 </div>
-
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-3 pt-3 border-t border-gray-100">
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Political</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {((analysis.bias_indicators as any).political_bias * 100 || 0).toFixed(0)}%
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Regional</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {((analysis.bias_indicators as any).regional_bias * 100 || 0).toFixed(0)}%
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Sentiment</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {((analysis.bias_indicators as any).sentiment_bias * 100 || 0).toFixed(0)}%
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Source</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {((analysis.bias_indicators as any).source_reliability_bias * 100 || 0).toFixed(0)}%
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Representation</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {((analysis.bias_indicators as any).representation_bias * 100 || 0).toFixed(0)}%
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 mb-1">Language</p>
-                    <p className="text-sm font-medium text-gray-900">
-                      {((analysis.bias_indicators as any).language_bias * 100 || 0).toFixed(0)}%
-                    </p>
-                  </div>
-                </div>
-
-                {detailedAnalysis && (
-                  <div className="mt-3 pt-3 border-t border-gray-100">
-                    <p className="text-xs font-medium text-gray-700 mb-2">Key Findings:</p>
-                    <div className="space-y-1">
-                      {detailedAnalysis.political?.evidence?.[0] && (
-                        <p className="text-xs text-gray-600">• {detailedAnalysis.political.evidence[0]}</p>
-                      )}
-                      {detailedAnalysis.sentiment?.evidence?.[0] && (
-                        <p className="text-xs text-gray-600">• {detailedAnalysis.sentiment.evidence[0]}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
             );
           })}
