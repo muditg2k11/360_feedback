@@ -147,7 +147,7 @@ Deno.serve(async (req: Request) => {
             const sentiment = analyzeSentiment(fullText);
             const topics = extractTopics(fullText);
 
-            await supabase
+            const { data: analysisData } = await supabase
               .from('ai_analyses')
               .insert({
                 feedback_id: insertedItem.id,
@@ -158,7 +158,28 @@ Deno.serve(async (req: Request) => {
                 confidence_score: sentiment.keywords.length > 0 ? 0.8 : 0.6,
                 bias_indicators: {},
                 processed_at: new Date().toISOString(),
-              });
+              })
+              .select()
+              .single();
+
+            if (analysisData) {
+              try {
+                await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/detect-bias`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                  },
+                  body: JSON.stringify({
+                    title: article.title,
+                    content: article.content,
+                    feedbackId: insertedItem.id,
+                  }),
+                });
+              } catch (biasError) {
+                console.error('Error calling bias detection:', biasError);
+              }
+            }
           } else if (insertError) {
             console.error('Error inserting feedback item:', insertError);
           }
