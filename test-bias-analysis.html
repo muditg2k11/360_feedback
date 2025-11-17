@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Bias Analysis</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; }
+        .article { background: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 8px; }
+        .result { background: #e8f5e9; padding: 15px; margin: 10px 0; border-radius: 8px; }
+        .error { background: #ffebee; padding: 15px; margin: 10px 0; border-radius: 8px; }
+        button { background: #2196F3; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #1976D2; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .score { font-size: 24px; font-weight: bold; margin: 10px 0; }
+        .details { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+        .detail-item { background: white; padding: 10px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test Real-Time Bias Analysis</h1>
+    <p>This page tests the analyze-bias edge function with different article types to show that scores vary based on content.</p>
+
+    <button onclick="runTests()" id="testBtn">Run Bias Analysis Tests</button>
+    <div id="results"></div>
+
+    <script type="module">
+        const SUPABASE_URL = 'https://vhtevxlbmycifnnvbfzd.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZodGV2eGxibXljaWZubnZiZnpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mjc5NzQ1NTIsImV4cCI6MjA0MzU1MDU1Mn0.AYTZmN28MnBqNDN3DXQJ3TzJA-wnWBVGrVlvP_IAvQA';
+
+        const testArticles = [
+            {
+                id: 'test-1',
+                title: 'BJP slams Congress over corruption allegations; Party leaders demand immediate investigation',
+                content: 'BJP slams Congress over corruption allegations. The opposition party has launched a fierce attack accusing the government of misconduct. BJP leaders condemned the actions and demanded accountability.',
+                source: 'Test News',
+                language: 'English'
+            },
+            {
+                id: 'test-2',
+                title: 'Banks announce new interest rates for savings accounts',
+                content: 'Banks announce new interest rates for savings accounts. According to official reports, the rates have been adjusted following recent policy changes. The move is expected to benefit customers.',
+                source: 'Test News',
+                language: 'English'
+            },
+            {
+                id: 'test-3',
+                title: 'After weeks of controversy, RSS holds march in Karnataka amid fury and protests',
+                content: 'After weeks of controversy, RSS holds march in Karnataka. The decision has ignited fury among opposition parties who accuse the organization of divisive politics. Protests erupted in several districts.',
+                source: 'Test News',
+                language: 'English'
+            },
+            {
+                id: 'test-4',
+                title: 'New metro line inaugurated in Bangalore to improve connectivity',
+                content: 'New metro line inaugurated in Bangalore. Officials announced the opening ceremony attended by city dignitaries. The infrastructure project aims to enhance public transportation.',
+                source: 'Test News',
+                language: 'English'
+            }
+        ];
+
+        window.runTests = async function() {
+            const btn = document.getElementById('testBtn');
+            const resultsDiv = document.getElementById('results');
+
+            btn.disabled = true;
+            btn.textContent = 'Testing...';
+            resultsDiv.innerHTML = '<p>⏳ Running bias analysis on test articles...</p>';
+
+            const results = [];
+
+            for (const article of testArticles) {
+                try {
+                    const response = await fetch(`${SUPABASE_URL}/functions/v1/analyze-bias`, {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                            'Content-Type': 'application/json',
+                            'apikey': SUPABASE_ANON_KEY,
+                        },
+                        body: JSON.stringify({
+                            feedbackId: article.id,
+                            title: article.title,
+                            content: article.content,
+                            source: article.source,
+                            language: article.language
+                        })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                    }
+
+                    const result = await response.json();
+                    results.push({ article, result });
+                } catch (error) {
+                    results.push({ article, error: error.message });
+                }
+            }
+
+            displayResults(results);
+            btn.disabled = false;
+            btn.textContent = 'Run Tests Again';
+        };
+
+        function displayResults(results) {
+            const resultsDiv = document.getElementById('results');
+            let html = '<h2>📊 Analysis Results</h2>';
+
+            results.forEach(({ article, result, error }) => {
+                if (error) {
+                    html += `
+                        <div class="error">
+                            <h3>❌ ${article.title}</h3>
+                            <p><strong>Error:</strong> ${error}</p>
+                        </div>
+                    `;
+                } else {
+                    const bias = result.biasAnalysis;
+                    const classification = bias.overall_classification;
+                    const classColor =
+                        classification === 'High Bias' ? '#f44336' :
+                        classification === 'Medium Bias' ? '#ff9800' :
+                        '#4caf50';
+
+                    html += `
+                        <div class="article">
+                            <h3>${article.title}</h3>
+                            <p><em>${article.content.substring(0, 150)}...</em></p>
+                        </div>
+                        <div class="result">
+                            <div class="score" style="color: ${classColor}">
+                                ${classification}: ${bias.overall_score.toFixed(1)}%
+                            </div>
+                            <div class="details">
+                                <div class="detail-item">
+                                    <strong>Political:</strong> ${(bias.political_bias * 100).toFixed(1)}%
+                                    <br><small>${bias.detailed_analysis.political.evidence.join(', ')}</small>
+                                </div>
+                                <div class="detail-item">
+                                    <strong>Sentiment:</strong> ${(bias.sentiment_bias * 100).toFixed(1)}%
+                                    <br><small>${bias.detailed_analysis.sentiment.evidence.join(', ')}</small>
+                                </div>
+                                <div class="detail-item">
+                                    <strong>Regional:</strong> ${(bias.regional_bias * 100).toFixed(1)}%
+                                    <br><small>${bias.detailed_analysis.regional.evidence.join(', ')}</small>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            resultsDiv.innerHTML = html;
+        }
+    </script>
+</body>
+</html>
