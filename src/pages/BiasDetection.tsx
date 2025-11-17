@@ -354,6 +354,59 @@ function BiasDetailModal({ feedback, analysis, onClose }: BiasDetailModalProps) 
             </div>
           </div>
 
+          {analysis.sentiment_label && (
+            <div className="bg-blue-50 rounded-lg p-4">
+              <h3 className="font-semibold text-gray-900 mb-3">Sentiment Analysis</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Overall Sentiment</p>
+                  <span className={`px-3 py-1 rounded-full text-sm font-medium inline-block ${
+                    analysis.sentiment_label === 'positive' ? 'bg-green-100 text-green-700' :
+                    analysis.sentiment_label === 'negative' ? 'bg-red-100 text-red-700' :
+                    analysis.sentiment_label === 'mixed' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-gray-100 text-gray-700'
+                  }`}>
+                    {analysis.sentiment_label.charAt(0).toUpperCase() + analysis.sentiment_label.slice(1)}
+                  </span>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-600 mb-1">Sentiment Score</p>
+                  <p className="text-lg font-semibold text-gray-900">
+                    {(analysis.sentiment_score * 100).toFixed(0)}%
+                  </p>
+                </div>
+                {(analysis.bias_indicators as any).sentiment_details && (
+                  <>
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Positive Words</p>
+                      <p className="text-lg font-semibold text-green-600">
+                        {(analysis.bias_indicators as any).sentiment_details.positive_count || 0}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-600 mb-1">Negative Words</p>
+                      <p className="text-lg font-semibold text-red-600">
+                        {(analysis.bias_indicators as any).sentiment_details.negative_count || 0}
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+              {(analysis.bias_indicators as any).sentiment_details?.emotional_words?.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-xs text-gray-600 mb-2">Emotional Keywords:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(analysis.bias_indicators as any).sentiment_details.emotional_words.map((word: string, idx: number) => (
+                      <span key={idx} className="px-2 py-1 bg-white text-gray-700 rounded text-xs border border-gray-300">
+                        {word}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="space-y-4">
             <h3 className="font-semibold text-gray-900">Dimensional Breakdown</h3>
             {biasDimensions.map((dimension) => {

@@ -57,11 +57,14 @@ Deno.serve(async (req: Request) => {
 
     const fullText = `${title} ${content}`;
     const biasAnalysis = detectBias(fullText, title, content);
+    const sentimentAnalysis = analyzeSentiment(fullText);
 
     if (feedbackId) {
       await supabase
         .from('ai_analyses')
         .update({
+          sentiment_score: sentimentAnalysis.score,
+          sentiment_label: sentimentAnalysis.label,
           bias_indicators: {
             political_bias: biasAnalysis.political_bias.score / 100,
             regional_bias: biasAnalysis.regional_bias.score / 100,
@@ -71,6 +74,7 @@ Deno.serve(async (req: Request) => {
             language_bias: biasAnalysis.language_bias.score / 100,
             overall_classification: biasAnalysis.classification,
             overall_score: biasAnalysis.overall_score,
+            sentiment_details: sentimentAnalysis,
             detailed_analysis: {
               political: biasAnalysis.political_bias,
               regional: biasAnalysis.regional_bias,
@@ -191,13 +195,102 @@ function analyzeRegionalBias(text: string, title: string): BiasScore {
 }
 
 function analyzeSentimentBias(text: string, title: string): BiasScore {
-  const score = 55;
-  const evidence: string[] = ['Sentiment analysis baseline applied'];
+  let score = 20;
+  const evidence: string[] = [];
+
+  const emotionalLanguage = [
+    'fury', 'outrage', 'slams', 'blasts', 'attacks', 'condemns', 'denounces',
+    'controversy', 'scandal', 'crisis', 'shocking', 'devastating', 'alarming',
+    'terrifying', 'horrific', 'explosive', 'dramatic', 'sensational', 'extraordinary',
+    'catastrophic', 'disastrous', 'brilliant', 'amazing', 'fantastic', 'incredible',
+    'miracle', 'triumph', 'victory', 'disaster', 'chaos', 'turmoil', 'uproar',
+    'backlash', 'firestorm', 'bombshell', 'staggering', 'unprecedented', 'remarkable'
+  ];
+
+  const negativeWords = [
+    'bad', 'poor', 'failure', 'problem', 'issue', 'crisis', 'concern',
+    'decline', 'ineffective', 'corrupt', 'illegal', 'fraud', 'scam', 'wrong',
+    'terrible', 'awful', 'horrible', 'worst', 'failed', 'broken', 'damaged'
+  ];
+
+  const positiveWords = [
+    'good', 'great', 'excellent', 'positive', 'success', 'achievement',
+    'progress', 'improvement', 'beneficial', 'effective', 'strong', 'robust',
+    'outstanding', 'superb', 'wonderful', 'perfect', 'best', 'superior'
+  ];
+
+  const opinionatedPhrases = [
+    'should', 'must', 'need to', 'has to', 'ought to', 'obviously',
+    'clearly', 'undoubtedly', 'certainly', 'definitely', 'absolutely'
+  ];
+
+  const sensationalistPunctuation = (text.match(/!/g) || []).length;
+  const allCaps = (text.match(/\b[A-Z]{3,}\b/g) || []).length;
+
+  let emotionalCount = 0;
+  emotionalLanguage.forEach(word => {
+    if (text.includes(word)) {
+      emotionalCount++;
+      score += 15;
+    }
+  });
+
+  if (emotionalCount > 0) {
+    evidence.push(`Emotional language detected: ${emotionalCount} charged words (${emotionalLanguage.filter(w => text.includes(w)).slice(0, 3).join(', ')})`);
+  }
+
+  let negativeCount = 0;
+  negativeWords.forEach(word => {
+    if (text.includes(word)) negativeCount++;
+  });
+
+  let positiveCount = 0;
+  positiveWords.forEach(word => {
+    if (text.includes(word)) positiveCount++;
+  });
+
+  const sentimentImbalance = Math.abs(positiveCount - negativeCount);
+  if (sentimentImbalance > 3) {
+    score += sentimentImbalance * 5;
+    evidence.push(`Strong sentiment imbalance: ${Math.max(positiveCount, negativeCount)} ${positiveCount > negativeCount ? 'positive' : 'negative'} vs ${Math.min(positiveCount, negativeCount)} opposite`);
+  }
+
+  let opinionatedCount = 0;
+  opinionatedPhrases.forEach(phrase => {
+    if (text.includes(phrase)) {
+      opinionatedCount++;
+      score += 5;
+    }
+  });
+
+  if (opinionatedCount > 2) {
+    evidence.push(`Opinionated language: ${opinionatedCount} directive phrases suggesting bias`);
+  }
+
+  if (sensationalistPunctuation > 2) {
+    score += sensationalistPunctuation * 5;
+    evidence.push(`Sensationalist punctuation: ${sensationalistPunctuation} exclamation marks`);
+  }
+
+  if (allCaps > 0) {
+    score += allCaps * 10;
+    evidence.push(`Emphasis through capitalization: ${allCaps} words in all caps`);
+  }
+
+  const titleEmotional = emotionalLanguage.filter(w => title.includes(w)).length;
+  if (titleEmotional > 0) {
+    score += 10;
+    evidence.push('Emotional framing in headline increases reader bias');
+  }
+
+  if (evidence.length === 0) {
+    evidence.push('Neutral tone observed with minimal emotional language');
+  }
 
   return {
-    score,
+    score: Math.min(100, score),
     evidence,
-    explanation: 'Sentiment framing inherently present in news coverage',
+    explanation: 'Sentiment analysis based on emotional language and tone'
   };
 }
 
@@ -231,5 +324,76 @@ function analyzeLanguageBias(text: string, title: string, originalText: string):
     score,
     evidence,
     explanation: 'Word choice and framing create inherent perspective bias',
+  };
+}
+
+function analyzeSentiment(text: string): {
+  score: number;
+  label: string;
+  positive_count: number;
+  negative_count: number;
+  neutral_count: number;
+  emotional_words: string[];
+} {
+  const lowerText = text.toLowerCase();
+  const words = lowerText.split(/\s+/);
+
+  const positiveWords = [
+    'good', 'great', 'excellent', 'positive', 'success', 'achievement',
+    'progress', 'improvement', 'beneficial', 'effective', 'strong', 'robust',
+    'outstanding', 'superb', 'wonderful', 'perfect', 'best', 'superior',
+    'brilliant', 'amazing', 'fantastic', 'incredible', 'triumph', 'victory'
+  ];
+
+  const negativeWords = [
+    'bad', 'poor', 'failure', 'problem', 'issue', 'crisis', 'concern',
+    'decline', 'ineffective', 'corrupt', 'illegal', 'fraud', 'scam', 'wrong',
+    'terrible', 'awful', 'horrible', 'worst', 'failed', 'broken', 'damaged',
+    'disaster', 'catastrophic', 'devastating', 'alarming', 'shocking'
+  ];
+
+  const emotionalWords = [
+    'fury', 'outrage', 'controversy', 'scandal', 'explosive', 'dramatic',
+    'sensational', 'uproar', 'backlash', 'firestorm', 'bombshell'
+  ];
+
+  let positiveCount = 0;
+  let negativeCount = 0;
+  const foundEmotionalWords: string[] = [];
+
+  words.forEach(word => {
+    if (positiveWords.includes(word)) positiveCount++;
+    if (negativeWords.includes(word)) negativeCount++;
+    if (emotionalWords.includes(word) && !foundEmotionalWords.includes(word)) {
+      foundEmotionalWords.push(word);
+    }
+  });
+
+  const totalSentimentWords = positiveCount + negativeCount;
+  const neutralCount = words.length - totalSentimentWords;
+
+  let sentimentScore = 0;
+  let sentimentLabel = 'neutral';
+
+  if (totalSentimentWords > 0) {
+    sentimentScore = (positiveCount - negativeCount) / Math.max(totalSentimentWords, 1);
+    sentimentScore = Math.max(-1, Math.min(1, sentimentScore));
+
+    if (sentimentScore > 0.3) {
+      sentimentLabel = 'positive';
+    } else if (sentimentScore < -0.3) {
+      sentimentLabel = 'negative';
+    } else if (Math.abs(positiveCount - negativeCount) < 2 && totalSentimentWords > 3) {
+      sentimentLabel = 'mixed';
+    }
+  }
+
+  return {
+    score: sentimentScore,
+    label: sentimentLabel,
+    positive_count: positiveCount,
+    negative_count: negativeCount,
+    neutral_count: neutralCount,
+    emotional_words: foundEmotionalWords,
   };
 }
