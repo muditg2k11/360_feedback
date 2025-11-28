@@ -60,11 +60,17 @@ Deno.serve(async (req: Request) => {
     const sentimentAnalysis = analyzeSentiment(fullText);
 
     if (feedbackId) {
-      await supabase
+      const { error: upsertError } = await supabase
         .from('ai_analyses')
-        .update({
+        .upsert({
+          feedback_id: feedbackId,
           sentiment_score: sentimentAnalysis.score,
           sentiment_label: sentimentAnalysis.label,
+          topics: [],
+          entities: [],
+          keywords: [],
+          language_detected: 'en',
+          confidence_score: 0.85,
           bias_indicators: {
             political_bias: biasAnalysis.political_bias.score / 100,
             regional_bias: biasAnalysis.regional_bias.score / 100,
@@ -84,8 +90,22 @@ Deno.serve(async (req: Request) => {
               language: biasAnalysis.language_bias,
             },
           },
-        })
-        .eq('feedback_id', feedbackId);
+        }, {
+          onConflict: 'feedback_id'
+        });
+
+      if (upsertError) {
+        console.error('Error upserting analysis:', upsertError);
+      }
+
+      const { error: statusError } = await supabase
+        .from('feedback_items')
+        .update({ status: 'analyzed' })
+        .eq('id', feedbackId);
+
+      if (statusError) {
+        console.error('Error updating feedback status:', statusError);
+      }
     }
 
     return new Response(
