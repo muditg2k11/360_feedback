@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Single Article Bias Analysis</title>
+  <style>
+    body {
+      font-family: system-ui;
+      max-width: 1200px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 10px 5px;
+    }
+    button:hover {
+      opacity: 0.9;
+    }
+    .result {
+      margin-top: 20px;
+      padding: 20px;
+      background: #f9f9f9;
+      border-radius: 8px;
+      border-left: 4px solid #667eea;
+    }
+    .bias-bar {
+      margin: 15px 0;
+    }
+    .bar {
+      height: 30px;
+      background: linear-gradient(90deg, #10b981, #f59e0b, #ef4444);
+      border-radius: 15px;
+      position: relative;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      background: white;
+      border-radius: 15px;
+      transition: width 0.5s;
+    }
+    .score {
+      position: absolute;
+      right: 10px;
+      top: 5px;
+      font-weight: bold;
+      color: white;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+    }
+    .evidence {
+      background: #fff3cd;
+      padding: 10px;
+      border-radius: 6px;
+      margin-top: 10px;
+      font-size: 14px;
+    }
+    pre {
+      background: #2d2d2d;
+      color: #f8f8f2;
+      padding: 15px;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎯 Test Advanced Bias Detection</h1>
+    <p>This will analyze a single article to verify the bias detection algorithm works.</p>
+
+    <div>
+      <h3>Test Article:</h3>
+      <input type="text" id="title" placeholder="Article Title" style="width: 100%; padding: 10px; margin: 5px 0; border: 2px solid #ddd; border-radius: 6px;"
+        value="SHOCKING! Government's CONTROVERSIAL policy faces MASSIVE criticism">
+      <textarea id="content" placeholder="Article Content" rows="6" style="width: 100%; padding: 10px; margin: 5px 0; border: 2px solid #ddd; border-radius: 6px;">
+Opposition leaders slammed the government's new policy today. Critics say the disastrous policy will fail completely. Sources say the scandal-ridden ministry allegedly ignored expert advice. Anonymous sources claim corruption was involved. The crisis deepens as protests erupt across major cities. "This is a complete failure," said one critic. Government officials were unavailable for comment.
+      </textarea>
+    </div>
+
+    <button onclick="analyzeArticle()">🚀 Analyze Article</button>
+    <button onclick="testWithNeutralArticle()">📰 Test Neutral Article</button>
+
+    <div id="loading" style="display:none; margin: 20px 0; color: #667eea;">
+      ⏳ Analyzing... Please wait...
+    </div>
+
+    <div id="result"></div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://eydnxgmxpzrhtdddcszx.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV5ZG54Z214cHpyaHRkZGRjc3p4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mjc4Nzk5NzgsImV4cCI6MjA0MzQ1NTk3OH0.gEB-HKhJLXmQJ3DzYD2nwRf_NieMQlSDpwZmAjYBSv8';
+
+    async function analyzeArticle() {
+      const title = document.getElementById('title').value;
+      const content = document.getElementById('content').value;
+
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('result').innerHTML = '';
+
+      try {
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/detect-bias`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ title, content })
+        });
+
+        const data = await response.json();
+        document.getElementById('loading').style.display = 'none';
+
+        if (data.success) {
+          displayResults(data.analysis);
+        } else {
+          document.getElementById('result').innerHTML = `<div class="result" style="border-color: red;"><strong>Error:</strong> ${data.error}</div>`;
+        }
+      } catch (error) {
+        document.getElementById('loading').style.display = 'none';
+        document.getElementById('result').innerHTML = `<div class="result" style="border-color: red;"><strong>Error:</strong> ${error.message}</div>`;
+      }
+    }
+
+    function testWithNeutralArticle() {
+      document.getElementById('title').value = 'Finance Ministry announces new tax policy';
+      document.getElementById('content').value = 'The Finance Ministry today announced a new tax policy aimed at simplifying compliance. The policy will be implemented in phases starting next quarter. Officials stated that the changes were based on extensive consultation with stakeholders. Tax experts said the policy addresses key concerns raised by businesses. According to the ministry spokesperson, detailed guidelines will be released soon.';
+      analyzeArticle();
+    }
+
+    function displayResults(analysis) {
+      const overall = analysis.overall_score;
+      let classification = 'Low Bias';
+      let color = '#10b981';
+      if (overall >= 65) {
+        classification = 'High Bias';
+        color = '#ef4444';
+      } else if (overall >= 35) {
+        classification = 'Medium Bias';
+        color = '#f59e0b';
+      }
+
+      let html = `
+        <div class="result">
+          <h2>📊 Analysis Results</h2>
+          <div style="text-align: center; padding: 20px; background: ${color}; color: white; border-radius: 12px; margin: 20px 0;">
+            <div style="font-size: 48px; font-weight: bold;">${overall.toFixed(1)}</div>
+            <div style="font-size: 24px; margin-top: 10px;">${classification}</div>
+          </div>
+
+          <h3>🎯 Bias Dimensions</h3>
+      `;
+
+      const dimensions = [
+        { name: 'Political Bias', data: analysis.political_bias, color: '#3b82f6' },
+        { name: 'Regional Bias', data: analysis.regional_bias, color: '#8b5cf6' },
+        { name: 'Sentiment Bias', data: analysis.sentiment_bias, color: '#f97316' },
+        { name: 'Source Reliability', data: analysis.source_reliability_bias, color: '#10b981' },
+        { name: 'Representation Bias', data: analysis.representation_bias, color: '#eab308' },
+        { name: 'Language Bias', data: analysis.language_bias, color: '#ef4444' }
+      ];
+
+      dimensions.forEach(dim => {
+        const score = dim.data.score;
+        html += `
+          <div class="bias-bar">
+            <strong>${dim.name}</strong>
+            <div class="bar" style="background: ${dim.color};">
+              <div class="bar-fill" style="width: ${100 - score}%;"></div>
+              <span class="score">${score}/100</span>
+            </div>
+            ${dim.data.evidence && dim.data.evidence.length > 0 ? `
+              <div class="evidence">
+                <strong>Evidence:</strong>
+                ${dim.data.evidence.map(e => `<div>• ${e}</div>`).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      });
+
+      html += `
+          <h3>💬 Explanation</h3>
+          <p><strong>Political:</strong> ${analysis.political_bias.explanation}</p>
+          <p><strong>Sentiment:</strong> ${analysis.sentiment_bias.explanation}</p>
+          <p><strong>Source:</strong> ${analysis.source_reliability_bias.explanation}</p>
+          <p><strong>Representation:</strong> ${analysis.representation_bias.explanation}</p>
+          <p><strong>Language:</strong> ${analysis.language_bias.explanation}</p>
+        </div>
+      `;
+
+      document.getElementById('result').innerHTML = html;
+    }
+  </script>
+</body>
+</html>
