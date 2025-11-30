@@ -1,521 +1,331 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 import {
-  TrendingUp,
-  TrendingDown,
-  AlertTriangle,
   FileText,
   Eye,
+  Target,
   Activity,
-  MapPin,
-  Calendar,
   Zap,
-  BarChart3,
-  Radio
-} from 'lucide-react'
-import { AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+  Radio,
+  Sparkles,
+  Clock,
+  TrendingUp
+} from 'lucide-react';
 
-interface DashboardStats {
-  totalArticles: number
-  analyzedArticles: number
-  averageBias: number
-  highBiasCount: number
-  recentTrend: 'up' | 'down' | 'stable'
-  sourcesActive: number
-  articlesToday: number
-  regionsActive: number
-}
-
-interface BiasDistribution {
-  category: string
-  count: number
-  percentage: number
-  color: string
-}
-
-interface RecentArticle {
-  id: string
-  title: string
-  source_name: string
-  bias_score: number
-  sentiment: string
-  collected_at: string
-  region: string
-}
-
-interface TimeSeriesData {
-  date: string
-  articles: number
-  avgBias: number
-  positive: number
-  negative: number
-  neutral: number
-}
-
-const COLORS = {
-  primary: '#3b82f6',
-  success: '#10b981',
-  warning: '#f59e0b',
-  danger: '#ef4444',
-  purple: '#8b5cf6',
-  pink: '#ec4899',
-  teal: '#14b8a6',
-  orange: '#f97316'
+interface Stats {
+  totalFeedback: number;
+  analyzedCount: number;
+  pendingCount: number;
+  avgBiasScore: number;
+  activeSources: number;
+  todayCount: number;
+  regions: number;
+  recentActivity: Array<{
+    title: string;
+    time: string;
+    type: 'analysis' | 'collection';
+  }>;
 }
 
 export default function Dashboard() {
-  const [stats, setStats] = useState<DashboardStats>({
-    totalArticles: 0,
-    analyzedArticles: 0,
-    averageBias: 0,
-    highBiasCount: 0,
-    recentTrend: 'stable',
-    sourcesActive: 0,
-    articlesToday: 0,
-    regionsActive: 0
-  })
-
-  const [biasDistribution, setBiasDistribution] = useState<BiasDistribution[]>([])
-  const [recentArticles, setRecentArticles] = useState<RecentArticle[]>([])
-  const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesData[]>([])
-  const [loading, setLoading] = useState(true)
-  const [liveCount, setLiveCount] = useState(0)
+  const [stats, setStats] = useState<Stats>({
+    totalFeedback: 0,
+    analyzedCount: 0,
+    pendingCount: 0,
+    avgBiasScore: 0,
+    activeSources: 0,
+    todayCount: 0,
+    regions: 0,
+    recentActivity: []
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [pulseCount, setPulseCount] = useState(0);
 
   useEffect(() => {
-    loadDashboardData()
+    loadDashboardStats();
 
     const subscription = supabase
-      .channel('dashboard_updates')
+      .channel('dashboard_live')
       .on('postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'feedback_items' },
-        (payload) => {
-          console.log('New article detected!', payload)
-          setLiveCount(prev => prev + 1)
-          loadDashboardData()
+        { event: '*', schema: 'public', table: 'feedback_items' },
+        () => {
+          setPulseCount(prev => prev + 1);
+          loadDashboardStats();
         }
       )
       .on('postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'ai_analyses' },
-        (payload) => {
-          console.log('Analysis updated!', payload)
-          loadDashboardData()
+        { event: '*', schema: 'public', table: 'ai_analyses' },
+        () => {
+          setPulseCount(prev => prev + 1);
+          loadDashboardStats();
         }
       )
-      .subscribe()
+      .subscribe();
 
-    const interval = setInterval(loadDashboardData, 30000)
+    const interval = setInterval(loadDashboardStats, 15000);
 
     return () => {
-      subscription.unsubscribe()
-      clearInterval(interval)
-    }
-  }, [])
+      subscription.unsubscribe();
+      clearInterval(interval);
+    };
+  }, []);
 
-  const loadDashboardData = async () => {
+  const loadDashboardStats = async () => {
     try {
-      const { data: articles, error: articlesError } = await supabase
+      const { data: items } = await supabase
         .from('feedback_items')
-        .select('id, status, collected_at, region')
+        .select('id, status, collected_at, title');
 
-      if (articlesError) throw articlesError
-
-      const { data: analyses, error: analysesError } = await supabase
+      const { data: analyses } = await supabase
         .from('ai_analyses')
-        .select('bias_indicators, sentiment_label, feedback_id')
+        .select('bias_indicators');
 
-      if (analysesError) throw analysesError
-
-      const { data: sources, error: sourcesError } = await supabase
+      const { data: sources } = await supabase
         .from('media_sources')
         .select('id, active, region')
-        .eq('active', true)
+        .eq('active', true);
 
-      if (sourcesError) throw sourcesError
+      const totalFeedback = items?.length || 0;
+      const analyzedCount = items?.filter(i => i.status === 'analyzed').length || 0;
+      const pendingCount = items?.filter(i => i.status === 'pending').length || 0;
 
-      const totalArticles = articles?.length || 0
-      const analyzedArticles = articles?.filter(a => a.status === 'analyzed').length || 0
-
-      const biasScores = analyses?.map(a => {
-        const indicators = a.bias_indicators as any
-        return indicators?.overall_score || 0
-      }) || []
-
-      const averageBias = biasScores.length > 0
+      const biasScores = analyses?.map(a => (a.bias_indicators as any)?.overall_score || 0) || [];
+      const avgBiasScore = biasScores.length > 0
         ? Math.round(biasScores.reduce((sum, score) => sum + score, 0) / biasScores.length)
-        : 0
+        : 0;
 
-      const highBiasCount = biasScores.filter(score => score >= 65).length
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayCount = items?.filter(i => new Date(i.collected_at) >= today).length || 0;
 
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-      const articlesToday = articles?.filter(a =>
-        new Date(a.collected_at) >= today
-      ).length || 0
+      const regions = new Set(sources?.map(s => s.region).filter(Boolean));
 
-      const regions = new Set(articles?.map(a => a.region).filter(Boolean) || [])
-      const regionsActive = regions.size
+      const recentItems = items?.slice(-5).reverse().map(item => ({
+        title: item.title,
+        time: new Date(item.collected_at).toLocaleTimeString(),
+        type: item.status === 'analyzed' ? 'analysis' as const : 'collection' as const
+      })) || [];
 
       setStats({
-        totalArticles,
-        analyzedArticles,
-        averageBias,
-        highBiasCount,
-        recentTrend: articlesToday > 100 ? 'up' : articlesToday < 50 ? 'down' : 'stable',
-        sourcesActive: sources?.length || 0,
-        articlesToday,
-        regionsActive
-      })
-
-      const lowBias = biasScores.filter(s => s < 35).length
-      const mediumBias = biasScores.filter(s => s >= 35 && s < 65).length
-      const highBias = biasScores.filter(s => s >= 65).length
-      const total = biasScores.length || 1
-
-      setBiasDistribution([
-        { category: 'Low Bias', count: lowBias, percentage: Math.round((lowBias / total) * 100), color: COLORS.success },
-        { category: 'Medium Bias', count: mediumBias, percentage: Math.round((mediumBias / total) * 100), color: COLORS.warning },
-        { category: 'High Bias', count: highBias, percentage: Math.round((highBias / total) * 100), color: COLORS.danger }
-      ])
-
-      const { data: recentData, error: recentError } = await supabase
-        .from('feedback_items')
-        .select(`
-          id,
-          title,
-          collected_at,
-          region,
-          media_sources (name),
-          ai_analyses (
-            bias_indicators,
-            sentiment_label
-          )
-        `)
-        .order('collected_at', { ascending: false })
-        .limit(10)
-
-      if (!recentError && recentData) {
-        const formattedRecent = recentData.map((item: any) => ({
-          id: item.id,
-          title: item.title,
-          source_name: item.media_sources?.name || 'Unknown',
-          bias_score: item.ai_analyses?.[0]?.bias_indicators?.overall_score || 0,
-          sentiment: item.ai_analyses?.[0]?.sentiment_label || 'neutral',
-          collected_at: item.collected_at,
-          region: item.region || 'India'
-        }))
-        setRecentArticles(formattedRecent)
-      }
-
-      const last7Days = Array.from({ length: 7 }, (_, i) => {
-        const date = new Date()
-        date.setDate(date.getDate() - (6 - i))
-        return date.toISOString().split('T')[0]
-      })
-
-      const timeData = last7Days.map(date => {
-        const dayArticles = articles?.filter(a =>
-          a.collected_at.startsWith(date)
-        ) || []
-
-        const dayAnalyses = dayArticles
-          .map(a => analyses?.find((an: any) => an.feedback_id === a.id))
-          .filter(Boolean)
-
-        const avgBias = dayAnalyses.length > 0
-          ? dayAnalyses.reduce((sum: number, a: any) => sum + (a.bias_indicators?.overall_score || 0), 0) / dayAnalyses.length
-          : 0
-
-        const sentiments = dayAnalyses.map((a: any) => a.sentiment_label || 'neutral')
-
-        return {
-          date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          articles: dayArticles.length,
-          avgBias: Math.round(avgBias),
-          positive: sentiments.filter(s => s === 'positive').length,
-          negative: sentiments.filter(s => s === 'negative').length,
-          neutral: sentiments.filter(s => s === 'neutral' || s === 'mixed').length
-        }
-      })
-
-      setTimeSeriesData(timeData)
-
+        totalFeedback,
+        analyzedCount,
+        pendingCount,
+        avgBiasScore,
+        activeSources: sources?.length || 0,
+        todayCount,
+        regions: regions.size,
+        recentActivity: recentItems
+      });
     } catch (error) {
-      console.error('Error loading dashboard:', error)
+      console.error('Error loading dashboard:', error);
     } finally {
-      setLoading(false)
+      setIsLoading(false);
     }
-  }
+  };
 
-  const StatCard = ({ title, value, subtitle, icon: Icon, trend, color }: any) => (
-    <div className="relative overflow-hidden bg-white rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
-      <div className="absolute top-0 right-0 w-32 h-32 transform translate-x-8 -translate-y-8">
-        <div className={`w-full h-full rounded-full bg-gradient-to-br ${color} opacity-10`}></div>
-      </div>
-      <div className="relative p-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-600 uppercase tracking-wider">{title}</p>
-            <p className="mt-2 text-4xl font-bold text-gray-900">{value}</p>
-            {subtitle && (
-              <p className="mt-2 text-sm text-gray-500 flex items-center gap-1">
-                {trend === 'up' && <TrendingUp className="w-4 h-4 text-green-500" />}
-                {trend === 'down' && <TrendingDown className="w-4 h-4 text-red-500" />}
-                {subtitle}
-              </p>
-            )}
-          </div>
-          <div className={`p-3 rounded-xl bg-gradient-to-br ${color}`}>
-            <Icon className="w-6 h-6 text-white" />
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-16 w-16 border-b-4 border-blue-600"></div>
-          <p className="mt-4 text-gray-600 font-medium">Loading dashboard...</p>
+          <div className="inline-block animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-blue-400"></div>
+          <p className="mt-4 text-white font-medium">Loading dashboard...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-4xl font-bold flex items-center gap-3">
-                <Activity className="w-10 h-10" />
-                India News Bias Detection
-              </h1>
-              <p className="mt-2 text-blue-100 text-lg">Real-time news analysis across 40+ Indian media sources</p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white relative overflow-hidden">
+      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDE2YzAtMi4yMS0xLjc5LTQtNC00cy00IDEuNzktNCA0IDEuNzkgNCA0IDQgNC0xLjc5IDQtNHptLTQgMmMtMS4xIDAtMi0uOS0yLTJzLjktMiAyLTIgMiAuOSAyIDItLjkgMi0yIDJ6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-20"></div>
+
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-400 via-cyan-400 to-teal-400 bg-clip-text text-transparent flex items-center gap-3">
+              <Sparkles className="w-12 h-12 text-blue-400 animate-pulse" />
+              India News Intelligence
+            </h1>
+            <p className="mt-2 text-blue-200 text-lg">Real-time bias detection and analysis</p>
+          </div>
+
+          {pulseCount > 0 && (
+            <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 backdrop-blur-xl border border-green-500/30 rounded-full px-6 py-3 flex items-center gap-2 animate-bounce">
+              <div className="relative">
+                <div className="w-3 h-3 bg-green-400 rounded-full animate-ping absolute"></div>
+                <div className="w-3 h-3 bg-green-400 rounded-full"></div>
+              </div>
+              <span className="font-semibold text-green-300">{pulseCount} live updates</span>
             </div>
-            <div className="flex items-center gap-4">
-              {liveCount > 0 && (
-                <div className="bg-white/20 backdrop-blur-lg rounded-full px-6 py-3 flex items-center gap-2 animate-pulse">
-                  <div className="w-3 h-3 bg-green-400 rounded-full animate-ping"></div>
-                  <span className="font-semibold">{liveCount} new articles</span>
-                </div>
-              )}
-              <div className="text-right">
-                <p className="text-sm text-blue-100">Last updated</p>
-                <p className="font-semibold">{new Date().toLocaleTimeString()}</p>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="group relative bg-gradient-to-br from-blue-500/10 to-cyan-500/10 backdrop-blur-xl border border-blue-500/20 rounded-2xl p-6 hover:border-blue-400/50 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/20">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <FileText className="w-8 h-8 text-blue-400" />
+                <div className="text-3xl font-bold text-blue-300">{stats.totalFeedback}</div>
+              </div>
+              <div className="text-sm text-blue-200 font-medium">Total Articles</div>
+              <div className="mt-2 text-xs text-blue-300/60">{stats.todayCount} collected today</div>
+            </div>
+          </div>
+
+          <div className="group relative bg-gradient-to-br from-emerald-500/10 to-green-500/10 backdrop-blur-xl border border-emerald-500/20 rounded-2xl p-6 hover:border-emerald-400/50 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-emerald-500/20">
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <Eye className="w-8 h-8 text-emerald-400" />
+                <div className="text-3xl font-bold text-emerald-300">{stats.analyzedCount}</div>
+              </div>
+              <div className="text-sm text-emerald-200 font-medium">Analyzed</div>
+              <div className="mt-2 text-xs text-emerald-300/60">
+                {Math.round((stats.analyzedCount / (stats.totalFeedback || 1)) * 100)}% completion
               </div>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatCard
-            title="Total Articles"
-            value={stats.totalArticles.toLocaleString()}
-            subtitle={`${stats.articlesToday} collected today`}
-            icon={FileText}
-            trend={stats.recentTrend}
-            color="from-blue-500 to-blue-600"
-          />
-          <StatCard
-            title="Analyzed"
-            value={stats.analyzedArticles.toLocaleString()}
-            subtitle={`${Math.round((stats.analyzedArticles / (stats.totalArticles || 1)) * 100)}% completion rate`}
-            icon={Eye}
-            color="from-green-500 to-green-600"
-          />
-          <StatCard
-            title="Average Bias"
-            value={`${stats.averageBias}%`}
-            subtitle={`${stats.highBiasCount} high bias articles`}
-            icon={BarChart3}
-            color="from-orange-500 to-orange-600"
-          />
-          <StatCard
-            title="Active Sources"
-            value={stats.sourcesActive}
-            subtitle={`${stats.regionsActive} regions covered`}
-            icon={Radio}
-            color="from-purple-500 to-purple-600"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <TrendingUp className="w-6 h-6 text-blue-600" />
-              Articles Collection Trend
-            </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={timeSeriesData}>
-                <defs>
-                  <linearGradient id="colorArticles" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" stroke="#6b7280" />
-                <YAxis stroke="#6b7280" />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#fff',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '0.5rem',
-                    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="articles"
-                  stroke={COLORS.primary}
-                  strokeWidth={3}
-                  fill="url(#colorArticles)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="group relative bg-gradient-to-br from-amber-500/10 to-orange-500/10 backdrop-blur-xl border border-amber-500/20 rounded-2xl p-6 hover:border-amber-400/50 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-amber-500/20">
+            <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <Target className="w-8 h-8 text-amber-400" />
+                <div className="text-3xl font-bold text-amber-300">{stats.avgBiasScore}%</div>
+              </div>
+              <div className="text-sm text-amber-200 font-medium">Average Bias</div>
+              <div className="mt-2 h-2 bg-amber-900/30 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-400 to-orange-400 rounded-full transition-all duration-500"
+                  style={{ width: `${stats.avgBiasScore}%` }}
+                ></div>
+              </div>
+            </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-              <AlertTriangle className="w-6 h-6 text-orange-600" />
-              Bias Distribution
-            </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={biasDistribution as any}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={(entry: any) => `${entry.category}: ${entry.percentage}%`}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="count"
-                >
-                  {biasDistribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="mt-4 grid grid-cols-3 gap-4">
-              {biasDistribution.map((item, index) => (
-                <div key={index} className="text-center">
-                  <div className="flex items-center justify-center gap-2 mb-1">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
-                    <span className="text-sm font-medium text-gray-600">{item.category}</span>
-                  </div>
-                  <p className="text-2xl font-bold text-gray-900">{item.count}</p>
-                </div>
-              ))}
+          <div className="group relative bg-gradient-to-br from-purple-500/10 to-pink-500/10 backdrop-blur-xl border border-purple-500/20 rounded-2xl p-6 hover:border-purple-400/50 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-purple-500/20">
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <Radio className="w-8 h-8 text-purple-400" />
+                <div className="text-3xl font-bold text-purple-300">{stats.activeSources}</div>
+              </div>
+              <div className="text-sm text-purple-200 font-medium">Active Sources</div>
+              <div className="mt-2 text-xs text-purple-300/60">{stats.regions} regions covered</div>
             </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
-          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-            <BarChart3 className="w-6 h-6 text-purple-600" />
-            Sentiment Analysis Over Time
-          </h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={timeSeriesData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="date" stroke="#6b7280" />
-              <YAxis stroke="#6b7280" />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: '#fff',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '0.5rem',
-                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
-                }}
-              />
-              <Legend />
-              <Bar dataKey="positive" stackId="a" fill={COLORS.success} name="Positive" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="neutral" stackId="a" fill={COLORS.warning} name="Neutral" />
-              <Bar dataKey="negative" stackId="a" fill={COLORS.danger} name="Negative" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6">
+            <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+              <Activity className="w-6 h-6 text-cyan-400" />
+              Analysis Progress
+            </h2>
 
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-            <h3 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <Zap className="w-6 h-6 text-yellow-500" />
-              Latest Articles
-              <span className="ml-auto text-sm font-normal text-gray-500">Real-time updates</span>
-            </h3>
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-slate-300">Analyzed Articles</span>
+                  <span className="text-sm font-semibold text-emerald-400">{stats.analyzedCount}</span>
+                </div>
+                <div className="h-3 bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-green-500 rounded-full transition-all duration-500"
+                    style={{ width: `${(stats.analyzedCount / (stats.totalFeedback || 1)) * 100}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-slate-300">Pending Analysis</span>
+                  <span className="text-sm font-semibold text-amber-400">{stats.pendingCount}</span>
+                </div>
+                <div className="h-3 bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-500 to-orange-500 rounded-full transition-all duration-500"
+                    style={{ width: `${(stats.pendingCount / (stats.totalFeedback || 1)) * 100}%` }}
+                  ></div>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-slate-700/50">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center p-4 bg-gradient-to-br from-blue-500/10 to-cyan-500/10 rounded-xl border border-blue-500/20 hover:border-blue-400/40 transition-all">
+                    <TrendingUp className="w-6 h-6 mx-auto mb-2 text-blue-400" />
+                    <div className="text-2xl font-bold text-blue-400">{stats.todayCount}</div>
+                    <div className="text-xs text-blue-300/60 mt-1">Today</div>
+                  </div>
+                  <div className="text-center p-4 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-xl border border-purple-500/20 hover:border-purple-400/40 transition-all">
+                    <Radio className="w-6 h-6 mx-auto mb-2 text-purple-400" />
+                    <div className="text-2xl font-bold text-purple-400">{stats.regions}</div>
+                    <div className="text-xs text-purple-300/60 mt-1">Regions</div>
+                  </div>
+                  <div className="text-center p-4 bg-gradient-to-br from-emerald-500/10 to-green-500/10 rounded-xl border border-emerald-500/20 hover:border-emerald-400/40 transition-all">
+                    <Activity className="w-6 h-6 mx-auto mb-2 text-emerald-400" />
+                    <div className="text-2xl font-bold text-emerald-400">{stats.activeSources}</div>
+                    <div className="text-xs text-emerald-300/60 mt-1">Sources</div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Article</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Region</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bias Score</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Sentiment</th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {recentArticles.map((article) => (
-                  <tr key={article.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-medium text-gray-900 line-clamp-2">{article.title}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm text-gray-600">{article.source_name}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-1 text-sm text-gray-600">
-                        <MapPin className="w-4 h-4" />
-                        {article.region}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <div className="flex-1 bg-gray-200 rounded-full h-2 w-20">
-                          <div
-                            className={`h-2 rounded-full ${
-                              article.bias_score < 35 ? 'bg-green-500' :
-                              article.bias_score < 65 ? 'bg-yellow-500' :
-                              'bg-red-500'
-                            }`}
-                            style={{ width: `${article.bias_score}%` }}
-                          ></div>
+
+          <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-6">
+            <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+              <Zap className="w-6 h-6 text-yellow-400" />
+              Live Activity
+            </h2>
+
+            <div className="space-y-3 max-h-64 overflow-y-auto custom-scrollbar">
+              {stats.recentActivity.length > 0 ? (
+                stats.recentActivity.map((activity, index) => (
+                  <div
+                    key={index}
+                    className="p-3 bg-slate-800/50 rounded-lg border border-slate-700/50 hover:border-cyan-500/30 transition-all hover:shadow-lg hover:shadow-cyan-500/10"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`w-2 h-2 rounded-full mt-2 ${
+                        activity.type === 'analysis' ? 'bg-green-400 animate-pulse' : 'bg-blue-400'
+                      }`}></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-slate-300 truncate">{activity.title}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Clock className="w-3 h-3 text-slate-500" />
+                          <span className="text-xs text-slate-500">{activity.time}</span>
                         </div>
-                        <span className="text-sm font-semibold text-gray-900 w-10">{article.bias_score}%</span>
                       </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                        article.sentiment === 'positive' ? 'bg-green-100 text-green-800' :
-                        article.sentiment === 'negative' ? 'bg-red-100 text-red-800' :
-                        'bg-gray-100 text-gray-800'
-                      }`}>
-                        {article.sentiment}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-1 text-sm text-gray-500">
-                        <Calendar className="w-4 h-4" />
-                        {new Date(article.collected_at).toLocaleString()}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-slate-500">
+                  <Activity className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No recent activity</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(30, 41, 59, 0.3);
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: rgba(59, 130, 246, 0.5);
+          border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: rgba(59, 130, 246, 0.7);
+        }
+      `}</style>
     </div>
-  )
+  );
 }
