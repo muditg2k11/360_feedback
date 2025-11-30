@@ -100,25 +100,23 @@ export default function Reports() {
           {
             title: `Media Analysis Report - ${new Date().toLocaleDateString()}`,
             report_type: 'monthly',
-            summary: `Comprehensive analysis of ${analyzedFeedback.length} media articles across ${regions.length} regions`,
-            period_start: periodStart.toISOString(),
-            period_end: periodEnd.toISOString(),
+            summary: `Comprehensive analysis of ${analyzedFeedback.length} media articles across ${regions.length} regions. Total articles: ${feedback.length}, Regions covered: ${regions.length}, Languages: ${new Set(feedback.map(f => f.original_language)).size}`,
+            period_start: periodStart.toISOString().split('T')[0],
+            period_end: periodEnd.toISOString().split('T')[0],
             regions,
             departments,
             status: 'published',
             insights,
-            recommendations,
-            data: {
-              totalArticles: feedback.length,
-              analyzedArticles: analyzedFeedback.length,
-              regionStats
-            }
+            recommendations
           }
         ])
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error inserting report:', error);
+        throw error;
+      }
 
       await loadReports();
       alert('Report generated successfully!');
