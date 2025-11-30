@@ -1,11 +1,34 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase';
 import { indianStates } from '../constants';
-import { Search, Filter, Plus, ExternalLink, Clock, CheckCircle, Circle, Brain, Loader, RefreshCw, FileText, Globe, MapPin, Sparkles, TrendingUp, Lightbulb, Download } from 'lucide-react';
+import {
+  Search,
+  Filter,
+  Plus,
+  ExternalLink,
+  Clock,
+  CheckCircle,
+  Circle,
+  Brain,
+  Loader,
+  RefreshCw,
+  FileText,
+  Globe,
+  MapPin,
+  Sparkles,
+  TrendingUp,
+  Download,
+  Zap,
+  Eye,
+  BarChart3,
+  Target,
+  AlertCircle
+} from 'lucide-react';
 import FeedbackDetailModal from '../components/FeedbackDetailModal';
 import AddFeedbackModal from '../components/AddFeedbackModal';
 import { FeedbackItem, MediaSource } from '../types';
 import { dataService } from '../services/dataService';
-import { scrapingService, InsightsResult } from '../services/scrapingService';
+import { scrapingService } from '../services/scrapingService';
 
 export default function FeedbackCollection() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -21,50 +44,48 @@ export default function FeedbackCollection() {
   const [isScraping, setIsScraping] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [scrapeMessage, setScrapeMessage] = useState<string>('');
-  const [isGeneratingSummaries, setIsGeneratingSummaries] = useState(false);
-  const [summaryMessage, setSummaryMessage] = useState<string>('');
-  const [insights, setInsights] = useState<InsightsResult['insights'] | null>(null);
-  const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
-  const [showInsights, setShowInsights] = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [liveUpdates, setLiveUpdates] = useState(0);
 
   useEffect(() => {
     loadData();
 
-    const timeoutId = setTimeout(() => {
-      console.warn('[FeedbackCollection] Loading timeout - forcing completion');
-      setIsLoading(false);
-    }, 5000);
+    const subscription = supabase
+      .channel('feedback_live')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'feedback_items' },
+        () => {
+          setLiveUpdates(prev => prev + 1);
+          loadFeedbackItems();
+        }
+      )
+      .subscribe();
 
-    const subscription = dataService.subscribeToFeedbackItems(() => {
+    const interval = setInterval(() => {
       loadFeedbackItems();
-    });
+    }, 30000);
 
     return () => {
-      clearTimeout(timeoutId);
       subscription.unsubscribe();
+      clearInterval(interval);
     };
   }, []);
 
   const loadData = async () => {
-    console.log('[FeedbackCollection] Starting to load data...');
     setIsLoading(true);
-
     try {
-      console.log('[FeedbackCollection] Fetching feedback and sources...');
       const [feedback, sources] = await Promise.all([
         dataService.getFeedbackItems(),
         dataService.getMediaSources(),
       ]);
-      console.log('[FeedbackCollection] Received:', feedback.length, 'feedback items,', sources.length, 'sources');
       setFeedbackItems(feedback);
       setMediaSources(sources);
+      setLastUpdated(new Date());
     } catch (error) {
-      console.error('[FeedbackCollection] Error loading data:', error);
+      console.error('Error loading data:', error);
       setFeedbackItems([]);
       setMediaSources([]);
     } finally {
-      console.log('[FeedbackCollection] Setting isLoading to false');
       setIsLoading(false);
     }
   };
@@ -88,66 +109,17 @@ export default function FeedbackCollection() {
     return matchesSearch && matchesStatus && matchesRegion;
   });
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'analyzed':
-        return <CheckCircle className="w-4 h-4" />;
-      case 'processing':
-        return <Clock className="w-4 h-4 animate-spin" />;
-      default:
-        return <Circle className="w-4 h-4" />;
-    }
-  };
-
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'analyzed':
-        return 'bg-green-100 text-green-700 border-green-200';
+        return 'from-green-500 to-emerald-500';
       case 'processing':
-        return 'bg-blue-100 text-blue-700 border-blue-200';
+        return 'from-blue-500 to-cyan-500';
       case 'validated':
-        return 'bg-purple-100 text-purple-700 border-purple-200';
+        return 'from-purple-500 to-pink-500';
       default:
-        return 'bg-gray-100 text-gray-700 border-gray-200';
+        return 'from-gray-400 to-gray-500';
     }
-  };
-
-  const summarizeContent = (content: string, maxLength: number = 150): string => {
-    if (!content) return '';
-
-    // Remove extra whitespace
-    const cleaned = content.trim().replace(/\s+/g, ' ');
-
-    if (cleaned.length <= maxLength) {
-      return cleaned;
-    }
-
-    // Try to cut at sentence boundary
-    const sentences = cleaned.match(/[^.!?]+[.!?]+/g) || [];
-    let summary = '';
-
-    for (const sentence of sentences) {
-      if ((summary + sentence).length <= maxLength) {
-        summary += sentence;
-      } else {
-        break;
-      }
-    }
-
-    // If we got at least one sentence, return it
-    if (summary.length > 0) {
-      return summary.trim();
-    }
-
-    // Otherwise, cut at word boundary
-    const truncated = cleaned.substring(0, maxLength);
-    const lastSpace = truncated.lastIndexOf(' ');
-
-    if (lastSpace > maxLength * 0.8) {
-      return truncated.substring(0, lastSpace) + '...';
-    }
-
-    return truncated + '...';
   };
 
   const openDetailModal = (feedback: FeedbackItem) => {
@@ -157,7 +129,6 @@ export default function FeedbackCollection() {
 
   const handleAnalyze = async (feedback: FeedbackItem) => {
     setAnalyzingId(feedback.id);
-
     try {
       if (feedback.original_language !== 'English' && !feedback.translated_content) {
         await scrapingService.translateContent(
@@ -166,13 +137,11 @@ export default function FeedbackCollection() {
           feedback.original_language
         );
       }
-
       const result = await scrapingService.analyzeSentiment(
         feedback.id,
         feedback.content,
         feedback.original_language
       );
-
       if (result.success) {
         await loadFeedbackItems();
       }
@@ -185,549 +154,366 @@ export default function FeedbackCollection() {
 
   const handleScrapeNow = async () => {
     setIsScraping(true);
-    setScrapeMessage('Scraping news from RSS feeds...');
+    setScrapeMessage('Collecting news from media sources...');
     try {
       const result = await scrapingService.scrapeNews();
       if (result.success) {
         const totalArticles = result.results?.reduce((sum, r) => sum + (r.articlesSaved || 0), 0) || 0;
-        setScrapeMessage(`✓ Successfully collected ${totalArticles} new articles!`);
+        setScrapeMessage(`Successfully collected ${totalArticles} new articles!`);
         await loadFeedbackItems();
         setTimeout(() => setScrapeMessage(''), 5000);
       } else {
-        setScrapeMessage(`✗ Scraping failed: ${result.error || 'Unknown error'}`);
+        setScrapeMessage(`Scraping failed: ${result.error || 'Unknown error'}`);
         setTimeout(() => setScrapeMessage(''), 5000);
       }
     } catch (error) {
       console.error('Error scraping news:', error);
-      setScrapeMessage(`✗ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setScrapeMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setTimeout(() => setScrapeMessage(''), 5000);
     } finally {
       setIsScraping(false);
     }
   };
 
-  const handleGenerateSummaries = async () => {
-    setIsGeneratingSummaries(true);
-    setSummaryMessage('Generating AI summaries for articles...');
-    try {
-      const result = await scrapingService.generateSummariesForAll();
-      if (result.success) {
-        setSummaryMessage(`✓ Generated summaries for ${result.count} articles!`);
-        await loadFeedbackItems();
-        setTimeout(() => setSummaryMessage(''), 5000);
-      } else {
-        setSummaryMessage(`✗ Failed: ${result.error || 'Unknown error'}`);
-        setTimeout(() => setSummaryMessage(''), 5000);
-      }
-    } catch (error) {
-      console.error('Error generating summaries:', error);
-      setSummaryMessage(`✗ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setTimeout(() => setSummaryMessage(''), 5000);
-    } finally {
-      setIsGeneratingSummaries(false);
-    }
-  };
-
-  const handleGenerateInsights = async () => {
-    setIsGeneratingInsights(true);
-    try {
-      const result = await scrapingService.generateInsights({
-        limit: 50,
-        region: regionFilter !== 'all' ? regionFilter : undefined,
-      });
-
-      if (result.success && result.insights) {
-        setInsights(result.insights);
-        setShowInsights(true);
-      } else {
-        alert(`Failed to generate insights: ${result.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error('Error generating insights:', error);
-      alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsGeneratingInsights(false);
-    }
-  };
-
-  const handleExportJSON = async () => {
-    setIsExporting(true);
-    try {
-      const result = await scrapingService.exportToStructuredJSON({
-        region: regionFilter !== 'all' ? regionFilter : undefined,
-        limit: 100,
-      });
-
-      if (result.success && result.data) {
-        const jsonString = JSON.stringify(result.data, null, 2);
-        const blob = new Blob([jsonString], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `feedback-data-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        alert(`Successfully exported ${result.count} items to JSON!`);
-      } else {
-        alert(`Export failed: ${result.error || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error('Error exporting JSON:', error);
-      alert(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-gray-600">Loading feedback...</div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900">
+        <div className="text-center">
+          <Loader className="w-16 h-16 text-indigo-400 animate-spin mx-auto" />
+          <p className="mt-4 text-white font-medium">Loading feedback collection...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Feedback Collection</h1>
-          <p className="text-gray-600 mt-1">Monitor and manage regional media feedback</p>
-          <div className="flex items-center space-x-4">
-            {lastUpdated && (
-              <p className="text-sm text-gray-500 mt-1">
-                Last updated: {lastUpdated.toLocaleString('en-IN', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}
-              </p>
-            )}
-            {scrapeMessage && (
-              <p className={`text-sm mt-1 font-medium ${
-                scrapeMessage.startsWith('✓') ? 'text-green-600' :
-                scrapeMessage.startsWith('✗') ? 'text-red-600' : 'text-blue-600'
-              }`}>
-                {scrapeMessage}
-              </p>
-            )}
-            {summaryMessage && (
-              <p className={`text-sm mt-1 font-medium ${
-                summaryMessage.startsWith('✓') ? 'text-green-600' :
-                summaryMessage.startsWith('✗') ? 'text-red-600' : 'text-purple-600'
-              }`}>
-                {summaryMessage}
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center space-x-3 flex-wrap gap-2">
-          <button
-            onClick={handleExportJSON}
-            disabled={isExporting}
-            className="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-cyan-700 text-white rounded-lg hover:from-cyan-700 hover:to-cyan-800 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Download className={`w-5 h-5 ${isExporting ? 'animate-pulse' : ''}`} />
-            <span>{isExporting ? 'Exporting...' : 'Export JSON'}</span>
-          </button>
-          <button
-            onClick={handleGenerateInsights}
-            disabled={isGeneratingInsights}
-            className="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-orange-600 to-orange-700 text-white rounded-lg hover:from-orange-700 hover:to-orange-800 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <TrendingUp className={`w-5 h-5 ${isGeneratingInsights ? 'animate-bounce' : ''}`} />
-            <span>{isGeneratingInsights ? 'Analyzing...' : 'Generate Insights'}</span>
-          </button>
-          <button
-            onClick={handleGenerateSummaries}
-            disabled={isGeneratingSummaries}
-            className="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Sparkles className={`w-5 h-5 ${isGeneratingSummaries ? 'animate-pulse' : ''}`} />
-            <span>{isGeneratingSummaries ? 'Generating...' : 'Generate AI Summaries'}</span>
-          </button>
-          <button
-            onClick={handleScrapeNow}
-            disabled={isScraping}
-            className="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <RefreshCw className={`w-5 h-5 ${isScraping ? 'animate-spin' : ''}`} />
-            <span>{isScraping ? 'Scraping...' : 'Collect Real-Time Data'}</span>
-          </button>
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Add Feedback</span>
-          </button>
-        </div>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 text-white">
+      <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PHBhdGggZD0iTTM2IDE2YzAtMi4yMS0xLjc5LTQtNC00cy00IDEuNzktNCA0IDEuNzkgNCA0IDQgNC0xLjc5IDQtNHptLTQgMmMtMS4xIDAtMi0uOS0yLTJzLjktMiAyLTIgMiAuOSAyIDItLjkgMi0yIDJ6Ii8+PC9nPjwvZz48L3N2Zz4=')] opacity-30"></div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-5 border border-blue-200">
-          <div className="flex items-center justify-between mb-2">
-            <FileText className="w-8 h-8 text-blue-600" />
-            <div className="text-right">
-              <p className="text-2xl font-bold text-blue-900">{feedbackItems.length}</p>
-              <p className="text-xs text-blue-600 font-medium">Total Articles</p>
+      <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent flex items-center gap-3">
+                <Zap className="w-10 h-10 text-indigo-400" />
+                Feedback Collection
+              </h1>
+              <p className="text-indigo-200 mt-2">Real-time monitoring and intelligent analysis</p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {liveUpdates > 0 && (
+                <div className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 backdrop-blur-xl border border-green-500/30 rounded-full px-4 py-2 flex items-center gap-2">
+                  <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                  <span className="text-sm font-semibold text-green-300">{liveUpdates} new</span>
+                </div>
+              )}
+              <button
+                onClick={handleScrapeNow}
+                disabled={isScraping}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all disabled:opacity-50"
+              >
+                <RefreshCw className={`w-5 h-5 ${isScraping ? 'animate-spin' : ''}`} />
+                <span>{isScraping ? 'Collecting...' : 'Collect Now'}</span>
+              </button>
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:from-indigo-600 hover:to-purple-600 transition-all"
+              >
+                <Plus className="w-5 h-5" />
+                <span>Add Feedback</span>
+              </button>
             </div>
           </div>
-        </div>
 
-        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-5 border border-green-200">
-          <div className="flex items-center justify-between mb-2">
-            <CheckCircle className="w-8 h-8 text-green-600" />
-            <div className="text-right">
-              <p className="text-2xl font-bold text-green-900">
-                {feedbackItems.filter(f => f.status === 'analyzed').length}
-              </p>
-              <p className="text-xs text-green-600 font-medium">Analyzed</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-5 border border-purple-200">
-          <div className="flex items-center justify-between mb-2">
-            <Globe className="w-8 h-8 text-purple-600" />
-            <div className="text-right">
-              <p className="text-2xl font-bold text-purple-900">
-                {new Set(feedbackItems.map(f => f.original_language)).size}
-              </p>
-              <p className="text-xs text-purple-600 font-medium">Languages</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-5 border border-orange-200">
-          <div className="flex items-center justify-between mb-2">
-            <MapPin className="w-8 h-8 text-orange-600" />
-            <div className="text-right">
-              <p className="text-2xl font-bold text-orange-900">
-                {new Set(feedbackItems.map(f => f.region).filter(Boolean)).size}
-              </p>
-              <p className="text-xs text-orange-600 font-medium">Regions</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {showInsights && insights && (
-        <div className="bg-gradient-to-br from-orange-50 to-yellow-50 rounded-xl shadow-lg border-2 border-orange-300 p-6 mb-6">
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-12 h-12 rounded-full bg-orange-500 flex items-center justify-center">
-                <Lightbulb className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-900">Real-Time Data Insights</h3>
-                <p className="text-sm text-gray-600">
-                  Analyzed {insights.articlesAnalyzed} articles | Sentiment:
-                  <span className={`ml-1 font-semibold ${
-                    insights.sentiment === 'positive' ? 'text-green-600' :
-                    insights.sentiment === 'negative' ? 'text-red-600' : 'text-gray-600'
-                  }`}>
-                    {insights.sentiment.charAt(0).toUpperCase() + insights.sentiment.slice(1)}
-                  </span>
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowInsights(false)}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-            >
-              <span className="text-2xl">&times;</span>
-            </button>
-          </div>
-
-          <div className="bg-white rounded-lg p-5 mb-4 border-l-4 border-orange-500">
-            <h4 className="text-lg font-bold text-gray-900 mb-2 flex items-center space-x-2">
-              <TrendingUp className="w-5 h-5 text-orange-600" />
-              <span>Headline</span>
-            </h4>
-            <p className="text-base text-gray-800 font-semibold leading-relaxed">
-              {insights.headline}
-            </p>
-          </div>
-
-          <div className="bg-white rounded-lg p-5 border-l-4 border-yellow-500">
-            <h4 className="text-lg font-bold text-gray-900 mb-3 flex items-center space-x-2">
-              <FileText className="w-5 h-5 text-yellow-600" />
-              <span>Key Findings</span>
-            </h4>
-            <ul className="space-y-3">
-              {insights.bulletPoints.map((point, index) => (
-                <li key={index} className="flex items-start space-x-3">
-                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-yellow-500 text-white flex items-center justify-center text-sm font-bold mt-0.5">
-                    {index + 1}
-                  </div>
-                  <p className="text-gray-700 leading-relaxed flex-1">{point}</p>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {insights.topTopics.length > 0 && (
-            <div className="mt-4 flex items-center space-x-2 flex-wrap">
-              <span className="text-sm font-semibold text-gray-700">Top Topics:</span>
-              {insights.topTopics.map((topic, index) => (
-                <span
-                  key={index}
-                  className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-sm font-medium"
-                >
-                  {topic}
-                </span>
-              ))}
+          {scrapeMessage && (
+            <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-lg px-4 py-3 mb-6">
+              <p className="text-indigo-300">{scrapeMessage}</p>
             </div>
           )}
-        </div>
-      )}
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search feedback..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-          </div>
-
-          <div className="relative">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
-            >
-              <option value="all">All Status</option>
-              <option value="pending">Pending</option>
-              <option value="processing">Processing</option>
-              <option value="analyzed">Analyzed</option>
-              <option value="validated">Validated</option>
-            </select>
-          </div>
-
-          <div className="relative">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <select
-              value={regionFilter}
-              onChange={(e) => setRegionFilter(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
-            >
-              <option value="all">All Regions</option>
-              {indianStates.map((region) => (
-                <option key={region} value={region}>
-                  {region}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        {filteredFeedback.map((feedback) => {
-          const source = mediaSources.find((s) => s.id === feedback.source_id);
-          return (
-            <div
-              key={feedback.id}
-              className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3 mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900">{feedback.title}</h3>
-                    {feedback.url && (
-                      <a
-                        href={feedback.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-700"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    )}
-                  </div>
-                  {source && (
-                    <div className="flex items-center space-x-2 text-sm text-gray-600 mb-2">
-                      <span className="font-medium">{source.name}</span>
-                      <span className="text-gray-400">•</span>
-                      <span>{source.type}</span>
-                      <span className="text-gray-400">•</span>
-                      <span>{source.language}</span>
-                    </div>
-                  )}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+            <div className="group relative bg-gradient-to-br from-blue-500/10 to-cyan-500/10 backdrop-blur-xl border border-blue-500/20 rounded-xl p-5 hover:border-blue-400/50 transition-all hover:scale-105">
+              <div className="flex items-center justify-between">
+                <FileText className="w-8 h-8 text-blue-400" />
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-blue-300">{feedbackItems.length}</p>
+                  <p className="text-xs text-blue-400 mt-1">Total Articles</p>
                 </div>
-                <div
-                  className={`flex items-center space-x-2 px-3 py-1.5 rounded-full border text-sm font-medium ${getStatusColor(
-                    feedback.status
-                  )}`}
-                >
-                  {getStatusIcon(feedback.status)}
-                  <span className="capitalize">{feedback.status}</span>
+              </div>
+            </div>
+
+            <div className="group relative bg-gradient-to-br from-green-500/10 to-emerald-500/10 backdrop-blur-xl border border-green-500/20 rounded-xl p-5 hover:border-green-400/50 transition-all hover:scale-105">
+              <div className="flex items-center justify-between">
+                <CheckCircle className="w-8 h-8 text-green-400" />
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-green-300">
+                    {feedbackItems.filter(f => f.status === 'analyzed').length}
+                  </p>
+                  <p className="text-xs text-green-400 mt-1">Analyzed</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="group relative bg-gradient-to-br from-purple-500/10 to-pink-500/10 backdrop-blur-xl border border-purple-500/20 rounded-xl p-5 hover:border-purple-400/50 transition-all hover:scale-105">
+              <div className="flex items-center justify-between">
+                <Globe className="w-8 h-8 text-purple-400" />
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-purple-300">
+                    {new Set(feedbackItems.map(f => f.original_language)).size}
+                  </p>
+                  <p className="text-xs text-purple-400 mt-1">Languages</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="group relative bg-gradient-to-br from-amber-500/10 to-orange-500/10 backdrop-blur-xl border border-amber-500/20 rounded-xl p-5 hover:border-amber-400/50 transition-all hover:scale-105">
+              <div className="flex items-center justify-between">
+                <MapPin className="w-8 h-8 text-amber-400" />
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-amber-300">
+                    {new Set(feedbackItems.map(f => f.region)).size}
+                  </p>
+                  <p className="text-xs text-amber-400 mt-1">Regions</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-slate-800/50 backdrop-blur-xl border border-slate-700/50 rounded-xl p-4 mb-6">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex-1 min-w-64">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search articles..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 bg-slate-900/50 border border-slate-600/50 rounded-lg text-white placeholder-slate-400 focus:outline-none focus:border-indigo-500"
+                  />
                 </div>
               </div>
 
-              <div className="mb-4">
-                {feedback.summary ? (
-                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-blue-500 rounded-lg p-4 shadow-sm">
-                    <div className="flex items-start space-x-3">
-                      <div className="flex-shrink-0 mt-1">
-                        <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center">
-                          <FileText className="w-4 h-4 text-white" />
-                        </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-4 py-2 bg-slate-900/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+              >
+                <option value="all">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="analyzed">Analyzed</option>
+                <option value="processing">Processing</option>
+              </select>
+
+              <select
+                value={regionFilter}
+                onChange={(e) => setRegionFilter(e.target.value)}
+                className="px-4 py-2 bg-slate-900/50 border border-slate-600/50 rounded-lg text-white focus:outline-none focus:border-indigo-500"
+              >
+                <option value="all">All Regions</option>
+                {indianStates.map((state) => (
+                  <option key={state} value={state}>{state}</option>
+                ))}
+              </select>
+
+              <div className="flex items-center gap-2 bg-slate-900/50 border border-slate-600/50 rounded-lg p-1">
+                <button
+                  onClick={() => setViewMode('grid')}
+                  className={`px-3 py-1 rounded ${viewMode === 'grid' ? 'bg-indigo-500 text-white' : 'text-slate-400'}`}
+                >
+                  Grid
+                </button>
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`px-3 py-1 rounded ${viewMode === 'list' ? 'bg-indigo-500 text-white' : 'text-slate-400'}`}
+                >
+                  List
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredFeedback.map((item) => (
+              <div
+                key={item.id}
+                className="group relative bg-gradient-to-br from-slate-800/50 to-slate-900/50 backdrop-blur-xl border border-slate-700/50 rounded-xl p-5 hover:border-indigo-500/50 transition-all hover:scale-105 hover:shadow-2xl hover:shadow-indigo-500/20 cursor-pointer"
+                onClick={() => openDetailModal(item)}
+              >
+                <div className="absolute top-3 right-3">
+                  <div className={`px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r ${getStatusColor(item.status)} text-white`}>
+                    {item.status}
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <h3 className="text-lg font-bold text-white mb-2 line-clamp-2 group-hover:text-indigo-300 transition-colors">
+                    {item.title}
+                  </h3>
+                  <p className="text-sm text-slate-400 line-clamp-3">{item.content}</p>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-slate-500 mb-4">
+                  <div className="flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    <span>{item.region}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <Globe className="w-3 h-3" />
+                    <span>{item.original_language}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-4 border-t border-slate-700/50">
+                  <div className="text-xs text-slate-500">
+                    {new Date(item.collected_at).toLocaleDateString()}
+                  </div>
+                  {item.status === 'pending' && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAnalyze(item);
+                      }}
+                      disabled={analyzingId === item.id}
+                      className="flex items-center gap-1 px-3 py-1 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg text-xs hover:from-indigo-600 hover:to-purple-600 transition-all disabled:opacity-50"
+                    >
+                      {analyzingId === item.id ? (
+                        <>
+                          <Loader className="w-3 h-3 animate-spin" />
+                          <span>Analyzing...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Brain className="w-3 h-3" />
+                          <span>Analyze</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                  {item.status === 'analyzed' && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openDetailModal(item);
+                      }}
+                      className="flex items-center gap-1 px-3 py-1 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg text-xs hover:from-green-600 hover:to-emerald-600 transition-all"
+                    >
+                      <Eye className="w-3 h-3" />
+                      <span>View Results</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredFeedback.map((item) => (
+              <div
+                key={item.id}
+                className="group bg-gradient-to-r from-slate-800/50 to-slate-900/50 backdrop-blur-xl border border-slate-700/50 rounded-xl p-5 hover:border-indigo-500/50 transition-all cursor-pointer"
+                onClick={() => openDetailModal(item)}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h3 className="text-lg font-bold text-white group-hover:text-indigo-300 transition-colors">
+                        {item.title}
+                      </h3>
+                      <div className={`px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r ${getStatusColor(item.status)} text-white`}>
+                        {item.status}
                       </div>
-                      <div className="flex-1">
-                        <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-2 flex items-center space-x-2">
-                          <span>AI-Generated Summary</span>
-                          <span className="px-2 py-0.5 bg-blue-200 text-blue-800 rounded-full text-[10px]">
-                            {feedback.original_language}
-                          </span>
-                        </p>
-                        <p className="text-sm text-gray-800 leading-relaxed font-medium">
-                          {feedback.summary}
-                        </p>
-                        <button
-                          onClick={() => openDetailModal(feedback)}
-                          className="text-xs text-blue-600 hover:text-blue-700 font-semibold mt-3 flex items-center space-x-1 hover:underline"
-                        >
-                          <span>View full article details</span>
-                          <ExternalLink className="w-3 h-3" />
-                        </button>
+                    </div>
+                    <p className="text-sm text-slate-400 mb-3 line-clamp-2">{item.content}</p>
+                    <div className="flex items-center gap-4 text-xs text-slate-500">
+                      <div className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        <span>{item.region}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Globe className="w-3 h-3" />
+                        <span>{item.original_language}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        <span>{new Date(item.collected_at).toLocaleDateString()}</span>
                       </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-lg p-4">
-                    <div className="flex items-start space-x-2 mb-2">
-                      <div className="flex-shrink-0 mt-0.5">
-                        <div className="w-2 h-2 rounded-full bg-gray-500"></div>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">
-                          Content Preview ({feedback.original_language})
-                        </p>
-                        <p className="text-sm text-gray-800 leading-relaxed">
-                          {summarizeContent(feedback.content, 180)}
-                        </p>
-                      </div>
-                    </div>
-                    {feedback.content.length > 180 && (
+                  <div className="flex items-center gap-2">
+                    {item.status === 'pending' && (
                       <button
-                        onClick={() => openDetailModal(feedback)}
-                        className="text-xs text-blue-600 hover:text-blue-700 font-medium mt-2 flex items-center space-x-1"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAnalyze(item);
+                        }}
+                        disabled={analyzingId === item.id}
+                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-lg hover:from-indigo-600 hover:to-purple-600 transition-all disabled:opacity-50"
                       >
-                        <span>Read full content</span>
-                        <ExternalLink className="w-3 h-3" />
+                        {analyzingId === item.id ? (
+                          <>
+                            <Loader className="w-4 h-4 animate-spin" />
+                            <span>Analyzing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Brain className="w-4 h-4" />
+                            <span>Analyze</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                    {item.status === 'analyzed' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDetailModal(item);
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all"
+                      >
+                        <Eye className="w-4 h-4" />
+                        <span>View Results</span>
                       </button>
                     )}
                   </div>
-                )}
-
-                {feedback.translated_content && feedback.original_language !== 'English' && (
-                  <div className="bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-green-500 rounded-lg p-4 mt-3 shadow-sm">
-                    <div className="flex items-start space-x-3">
-                      <div className="flex-shrink-0 mt-1">
-                        <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center">
-                          <Globe className="w-4 h-4 text-white" />
-                        </div>
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-xs font-bold text-green-700 uppercase tracking-wider mb-2">
-                          English Translation Available
-                        </p>
-                        <p className="text-sm text-gray-800 leading-relaxed">
-                          {summarizeContent(feedback.translated_content, 150)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-                <div className="flex items-center space-x-4 text-sm text-gray-600">
-                  <span className="flex items-center space-x-1">
-                    <span className="font-medium">Region:</span>
-                    <span>{feedback.region}</span>
-                  </span>
-                  <span className="text-gray-400">•</span>
-                  <span className="px-2 py-1 bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 rounded-full text-xs font-semibold border border-blue-200">
-                    {feedback.original_language}
-                  </span>
-                  {feedback.category && (
-                    <>
-                      <span className="text-gray-400">•</span>
-                      <span className="flex items-center space-x-1">
-                        <span className="font-medium">Category:</span>
-                        <span>{feedback.category}</span>
-                      </span>
-                    </>
-                  )}
-                  <span className="text-gray-400">•</span>
-                  <span>
-                    {new Date(feedback.collected_at).toLocaleDateString('en-IN', {
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric',
-                    })}
-                  </span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {feedback.status !== 'analyzed' && (
-                    <button
-                      onClick={() => handleAnalyze(feedback)}
-                      disabled={analyzingId === feedback.id}
-                      className="px-4 py-2 text-sm font-medium text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
-                    >
-                      {analyzingId === feedback.id ? (
-                        <Loader className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Brain className="w-4 h-4" />
-                      )}
-                      <span>{analyzingId === feedback.id ? 'Analyzing...' : 'Analyze'}</span>
-                    </button>
-                  )}
-                  <button
-                    onClick={() => openDetailModal(feedback)}
-                    className="px-4 py-2 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  >
-                    View Details
-                  </button>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            ))}
+          </div>
+        )}
+
+        {filteredFeedback.length === 0 && (
+          <div className="text-center py-20">
+            <AlertCircle className="w-16 h-16 text-slate-600 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-slate-400 mb-2">No articles found</h3>
+            <p className="text-slate-500">Try adjusting your filters or collect new data</p>
+          </div>
+        )}
       </div>
 
-      {filteredFeedback.length === 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-          <p className="text-gray-500">No feedback items found matching your criteria.</p>
-        </div>
-      )}
-
-      {selectedFeedback && (
+      {isDetailModalOpen && selectedFeedback && (
         <FeedbackDetailModal
-          isOpen={isDetailModalOpen}
+          feedback={selectedFeedback}
           onClose={() => {
             setIsDetailModalOpen(false);
             setSelectedFeedback(null);
           }}
-          feedback={selectedFeedback}
-          source={mediaSources.find((s) => s.id === selectedFeedback.source_id)}
         />
       )}
 
-      {isAddModalOpen && <AddFeedbackModal onClose={() => setIsAddModalOpen(false)} onSuccess={loadFeedbackItems} mediaSources={mediaSources} />}
+      {isAddModalOpen && (
+        <AddFeedbackModal
+          onClose={() => setIsAddModalOpen(false)}
+          onSuccess={() => {
+            setIsAddModalOpen(false);
+            loadFeedbackItems();
+          }}
+          mediaSources={mediaSources}
+        />
+      )}
     </div>
   );
 }
