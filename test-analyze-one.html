@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test Single Article Analysis</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body {
+      font-family: system-ui;
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .container {
+      background: white;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    h1 {
+      color: #333;
+      margin-bottom: 10px;
+    }
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 16px 32px;
+      border-radius: 12px;
+      font-size: 18px;
+      font-weight: 600;
+      cursor: pointer;
+      width: 100%;
+      margin: 20px 0;
+      transition: transform 0.2s;
+    }
+    button:hover {
+      transform: scale(1.02);
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .result {
+      background: #f8fafc;
+      padding: 20px;
+      border-radius: 12px;
+      margin-top: 20px;
+    }
+    .score {
+      display: inline-block;
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-weight: bold;
+      margin: 8px;
+      font-size: 16px;
+    }
+    .low { background: #d1fae5; color: #065f46; }
+    .medium { background: #fef3c7; color: #92400e; }
+    .high { background: #fee2e2; color: #991b1b; }
+    .article-box {
+      background: white;
+      border: 2px solid #e5e7eb;
+      padding: 20px;
+      border-radius: 12px;
+      margin: 20px 0;
+    }
+    .loading {
+      text-align: center;
+      padding: 20px;
+      color: #667eea;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎯 Analyze National Herald Article</h1>
+    <p style="color: #666; margin-bottom: 30px;">
+      This will analyze the specific article showing zeros and save the results to your database.
+    </p>
+
+    <button id="analyzeBtn" onclick="analyzeArticle()">
+      🚀 Analyze "National Herald" Article Now
+    </button>
+
+    <div id="output"></div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://yeggkvzngggjfbwkginb.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllZ2drdnpuZ2dnamZid2tnaW5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwMjI5OTcsImV4cCI6MjA3NTU5ODk5N30.gnigRkVGoq0uiVwrPtKxm5XTWCrr1k7q2aL3ep4Q9so';
+
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    async function analyzeArticle() {
+      const btn = document.getElementById('analyzeBtn');
+      const output = document.getElementById('output');
+
+      btn.disabled = true;
+      output.innerHTML = '<div class="loading">⏳ Analyzing article...</div>';
+
+      try {
+        // Get the article from database
+        const { data: article, error: fetchError } = await supabase
+          .from('feedback_items')
+          .select('id, title, content')
+          .ilike('title', '%National Herald%')
+          .limit(1)
+          .single();
+
+        if (fetchError || !article) {
+          throw new Error('Article not found: ' + (fetchError?.message || 'No results'));
+        }
+
+        output.innerHTML = `
+          <div class="article-box">
+            <h3>📰 Article Found</h3>
+            <p><strong>Title:</strong> ${article.title}</p>
+            <p><strong>ID:</strong> ${article.id}</p>
+            <div class="loading">🔍 Running bias detection algorithm...</div>
+          </div>
+        `;
+
+        // Call the edge function
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/detect-bias`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: article.title,
+            content: article.content || article.title,
+            feedbackId: article.id
+          })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Edge Function failed: ${response.status} - ${errorText}`);
+        }
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(result.error || 'Analysis failed');
+        }
+
+        const analysis = result.analysis;
+
+        output.innerHTML = `
+          <div class="result">
+            <h3 style="color: #059669; margin-bottom: 20px;">✅ Analysis Complete!</h3>
+
+            <div class="article-box">
+              <h4>${article.title}</h4>
+
+              <div style="margin: 20px 0;">
+                <span class="score ${getScoreClass(analysis.overall_score)}">
+                  Overall: ${analysis.overall_score}/100
+                </span>
+                <span class="score ${getScoreClass(analysis.overall_score)}">
+                  ${analysis.classification}
+                </span>
+              </div>
+
+              <h4 style="margin-top: 30px; margin-bottom: 15px;">📊 Detailed Scores:</h4>
+              <div>
+                <span class="score">Political: ${analysis.political_bias.score}</span>
+                <span class="score">Regional: ${analysis.regional_bias.score}</span>
+                <span class="score">Sentiment: ${analysis.sentiment_bias.score}</span>
+              </div>
+              <div style="margin-top: 10px;">
+                <span class="score">Source: ${analysis.source_reliability_bias.score}</span>
+                <span class="score">Representation: ${analysis.representation_bias.score}</span>
+                <span class="score">Language: ${analysis.language_bias.score}</span>
+              </div>
+
+              <div style="margin-top: 30px; padding: 20px; background: #f0f9ff; border-radius: 8px;">
+                <h4 style="color: #0369a1;">💡 Evidence Found:</h4>
+                <p><strong>Political:</strong> ${analysis.political_bias.evidence.join('; ') || 'No specific evidence'}</p>
+                <p><strong>Regional:</strong> ${analysis.regional_bias.evidence.join('; ') || 'No specific evidence'}</p>
+                <p><strong>Sentiment:</strong> ${analysis.sentiment_bias.evidence.join('; ') || 'No specific evidence'}</p>
+                <p><strong>Language:</strong> ${analysis.language_bias.evidence.join('; ') || 'No specific evidence'}</p>
+              </div>
+            </div>
+
+            <div style="margin-top: 30px; padding: 20px; background: #ecfdf5; border-radius: 8px; border: 2px solid #10b981;">
+              <h4 style="color: #059669;">✅ Data Saved to Database</h4>
+              <p>Go back to your Bias Detection page and refresh to see the updated scores!</p>
+            </div>
+          </div>
+        `;
+
+        btn.textContent = '✓ Analysis Complete - Analyze Another?';
+        btn.disabled = false;
+
+      } catch (error) {
+        output.innerHTML = `
+          <div class="result" style="background: #fee2e2; border: 2px solid #ef4444;">
+            <h3 style="color: #dc2626;">❌ Error</h3>
+            <pre style="background: white; padding: 15px; border-radius: 8px; overflow-x: auto;">${error.message}</pre>
+            <p style="margin-top: 15px;"><strong>Troubleshooting:</strong></p>
+            <ul style="margin-left: 20px;">
+              <li>Check that the Edge Function is deployed</li>
+              <li>Verify Supabase credentials are correct</li>
+              <li>Open browser console for more details (F12)</li>
+            </ul>
+          </div>
+        `;
+        btn.disabled = false;
+      }
+    }
+
+    function getScoreClass(score) {
+      if (score < 35) return 'low';
+      if (score < 65) return 'medium';
+      return 'high';
+    }
+  </script>
+</body>
+</html>
