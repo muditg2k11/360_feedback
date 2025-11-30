@@ -46,6 +46,8 @@ export default function FeedbackCollection() {
   const [scrapeMessage, setScrapeMessage] = useState<string>('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [liveUpdates, setLiveUpdates] = useState(0);
+  const [isAnalyzingAll, setIsAnalyzingAll] = useState(false);
+  const [analyzeMessage, setAnalyzeMessage] = useState<string>('');
 
   useEffect(() => {
     loadData();
@@ -175,6 +177,33 @@ export default function FeedbackCollection() {
     }
   };
 
+  const handleAnalyzeAll = async () => {
+    setIsAnalyzingAll(true);
+    setAnalyzeMessage('Analyzing pending articles...');
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-pending', {
+        method: 'POST',
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        setAnalyzeMessage(`Successfully analyzed ${data.analyzed} articles!`);
+        await loadFeedbackItems();
+        setTimeout(() => setAnalyzeMessage(''), 5000);
+      } else {
+        setAnalyzeMessage(`Analysis failed: ${data.error || 'Unknown error'}`);
+        setTimeout(() => setAnalyzeMessage(''), 5000);
+      }
+    } catch (error) {
+      console.error('Error analyzing articles:', error);
+      setAnalyzeMessage(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setTimeout(() => setAnalyzeMessage(''), 5000);
+    } finally {
+      setIsAnalyzingAll(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900">
@@ -209,6 +238,14 @@ export default function FeedbackCollection() {
                 </div>
               )}
               <button
+                onClick={handleAnalyzeAll}
+                disabled={isAnalyzingAll}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all disabled:opacity-50"
+              >
+                <Brain className={`w-5 h-5 ${isAnalyzingAll ? 'animate-pulse' : ''}`} />
+                <span>{isAnalyzingAll ? 'Analyzing...' : 'Analyze All'}</span>
+              </button>
+              <button
                 onClick={handleScrapeNow}
                 disabled={isScraping}
                 className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg hover:from-green-600 hover:to-emerald-600 transition-all disabled:opacity-50"
@@ -232,7 +269,13 @@ export default function FeedbackCollection() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+          {analyzeMessage && (
+            <div className="bg-purple-500/10 border border-purple-500/30 rounded-lg px-4 py-3 mb-6">
+              <p className="text-purple-300">{analyzeMessage}</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
             <div className="group relative bg-gradient-to-br from-blue-500/10 to-cyan-500/10 backdrop-blur-xl border border-blue-500/20 rounded-xl p-5 hover:border-blue-400/50 transition-all hover:scale-105">
               <div className="flex items-center justify-between">
                 <FileText className="w-8 h-8 text-blue-400" />
@@ -255,6 +298,18 @@ export default function FeedbackCollection() {
               </div>
             </div>
 
+            <div className="group relative bg-gradient-to-br from-amber-500/10 to-orange-500/10 backdrop-blur-xl border border-amber-500/20 rounded-xl p-5 hover:border-amber-400/50 transition-all hover:scale-105">
+              <div className="flex items-center justify-between">
+                <Clock className="w-8 h-8 text-amber-400" />
+                <div className="text-right">
+                  <p className="text-3xl font-bold text-amber-300">
+                    {feedbackItems.filter(f => f.status === 'processing' || f.status === 'pending').length}
+                  </p>
+                  <p className="text-xs text-amber-400 mt-1">Pending</p>
+                </div>
+              </div>
+            </div>
+
             <div className="group relative bg-gradient-to-br from-purple-500/10 to-pink-500/10 backdrop-blur-xl border border-purple-500/20 rounded-xl p-5 hover:border-purple-400/50 transition-all hover:scale-105">
               <div className="flex items-center justify-between">
                 <Globe className="w-8 h-8 text-purple-400" />
@@ -267,14 +322,14 @@ export default function FeedbackCollection() {
               </div>
             </div>
 
-            <div className="group relative bg-gradient-to-br from-amber-500/10 to-orange-500/10 backdrop-blur-xl border border-amber-500/20 rounded-xl p-5 hover:border-amber-400/50 transition-all hover:scale-105">
+            <div className="group relative bg-gradient-to-br from-cyan-500/10 to-teal-500/10 backdrop-blur-xl border border-cyan-500/20 rounded-xl p-5 hover:border-cyan-400/50 transition-all hover:scale-105">
               <div className="flex items-center justify-between">
-                <MapPin className="w-8 h-8 text-amber-400" />
+                <MapPin className="w-8 h-8 text-cyan-400" />
                 <div className="text-right">
-                  <p className="text-3xl font-bold text-amber-300">
+                  <p className="text-3xl font-bold text-cyan-300">
                     {new Set(feedbackItems.map(f => f.region)).size}
                   </p>
-                  <p className="text-xs text-amber-400 mt-1">Regions</p>
+                  <p className="text-xs text-cyan-400 mt-1">Regions</p>
                 </div>
               </div>
             </div>
