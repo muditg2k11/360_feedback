@@ -1,35 +1,14 @@
-import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
-interface BiasScore {
-  score: number;
-  evidence: string[];
-  explanation: string;
-}
-
-interface BiasAnalysisResult {
-  political_bias: BiasScore;
-  regional_bias: BiasScore;
-  sentiment_bias: BiasScore;
-  source_reliability_bias: BiasScore;
-  representation_bias: BiasScore;
-  language_bias: BiasScore;
-  overall_score: number;
-  classification: 'High Bias' | 'Medium Bias' | 'Low Bias';
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 200,
-      headers: corsHeaders,
-    });
+    return new Response(null, { status: 200, headers: corsHeaders });
   }
 
   try {
@@ -38,241 +17,41 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    console.log('Starting reanalysis of all articles...');
-
-    const { data: feedbackItems, error: fetchError } = await supabase
+    const { data: articles } = await supabase
       .from('feedback_items')
       .select('id, title, content')
-      .eq('status', 'analyzed')
-      .order('created_at', { ascending: false });
+      .not('content', 'is', null)
+      .limit(500);
 
-    if (fetchError) {
-      console.error('Fetch error:', fetchError);
-      throw fetchError;
-    }
+    const results = { total: articles?.length || 0, processed: 0, low: 0, medium: 0, high: 0 };
 
-    if (!feedbackItems || feedbackItems.length === 0) {
-      return new Response(
-        JSON.stringify({ success: true, message: 'No articles to reanalyze', processed: 0 }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
-    }
+    for (const article of articles || []) {
+      const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/detect-bias`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ title: article.title, content: article.content, feedbackId: article.id })
+      });
 
-    console.log(`Found ${feedbackItems.length} articles to reanalyze`);
-
-    let processed = 0;
-    let failed = 0;
-    const errors: string[] = [];
-
-    for (const item of feedbackItems) {
-      try {
-        console.log(`Reanalyzing article ${item.id}: ${item.title?.substring(0, 50)}...`);
-
-        const fullText = `${item.title} ${item.content}`;
-        const biasAnalysis = detectBias(fullText, item.title || '', item.content || '');
-
-        await supabase
-          .from('ai_analyses')
-          .update({
-            bias_indicators: {
-              political_bias: biasAnalysis.political_bias.score / 100,
-              regional_bias: biasAnalysis.regional_bias.score / 100,
-              sentiment_bias: biasAnalysis.sentiment_bias.score / 100,
-              source_reliability_bias: biasAnalysis.source_reliability_bias.score / 100,
-              representation_bias: biasAnalysis.representation_bias.score / 100,
-              language_bias: biasAnalysis.language_bias.score / 100,
-              overall_classification: biasAnalysis.classification,
-              overall_score: biasAnalysis.overall_score,
-              detailed_analysis: {
-                political: biasAnalysis.political_bias,
-                regional: biasAnalysis.regional_bias,
-                sentiment: biasAnalysis.sentiment_bias,
-                source_reliability: biasAnalysis.source_reliability_bias,
-                representation: biasAnalysis.representation_bias,
-                language: biasAnalysis.language_bias,
-              },
-            },
-          })
-          .eq('feedback_id', item.id);
-
-        processed++;
-        console.log(`✓ Processed ${processed}/${feedbackItems.length}`);
-
-        if (processed % 10 === 0) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-
-      } catch (itemError) {
-        failed++;
-        const errorMsg = `Error processing article ${item.id}: ${itemError.message}`;
-        console.error(errorMsg);
-        errors.push(errorMsg);
+      if (response.ok) {
+        const result = await response.json();
+        results.processed++;
+        const score = result.analysis?.overall_score || 0;
+        if (score < 35) results.low++;
+        else if (score < 65) results.medium++;
+        else results.high++;
       }
     }
 
-    console.log(`Reanalysis complete: ${processed} succeeded, ${failed} failed`);
-
-    return new Response(
-      JSON.stringify({
-        success: true,
-        message: `Reanalyzed ${processed} articles`,
-        processed,
-        failed,
-        total: feedbackItems.length,
-        errors: errors.slice(0, 5),
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
-
+    return new Response(JSON.stringify({ success: true, results }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   } catch (error) {
-    console.error('Error in reanalyze-bias:', error);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message,
-        stack: error.stack
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    return new Response(JSON.stringify({ success: false, error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
   }
 });
-
-function detectBias(text: string, title: string, originalContent: string): BiasAnalysisResult {
-  const lowerText = text.toLowerCase();
-  const lowerTitle = title.toLowerCase();
-
-  const textLength = text.length;
-  const lengthMultiplier = textLength > 800 ? 1.2 : textLength > 500 ? 1.1 : 1.0;
-
-  const politicalBias = analyzePoliticalBias(lowerText, lowerTitle);
-  const regionalBias = analyzeRegionalBias(lowerText, lowerTitle);
-  const sentimentBias = analyzeSentimentBias(lowerText, lowerTitle);
-  const sourceReliabilityBias = analyzeSourceReliability(lowerText, lowerTitle);
-  const representationBias = analyzeRepresentationBias(lowerText, lowerTitle);
-  const languageBias = analyzeLanguageBias(lowerText, lowerTitle, originalContent);
-
-  politicalBias.score = Math.min(100, politicalBias.score * lengthMultiplier);
-  regionalBias.score = Math.min(100, regionalBias.score * lengthMultiplier);
-  sentimentBias.score = Math.min(100, sentimentBias.score * lengthMultiplier);
-  sourceReliabilityBias.score = Math.min(100, sourceReliabilityBias.score * lengthMultiplier);
-  representationBias.score = Math.min(100, representationBias.score * lengthMultiplier);
-  languageBias.score = Math.min(100, languageBias.score * lengthMultiplier);
-
-  const overallScore = (
-    politicalBias.score +
-    regionalBias.score +
-    sentimentBias.score +
-    sourceReliabilityBias.score +
-    representationBias.score +
-    languageBias.score
-  ) / 6;
-
-  let classification: 'High Bias' | 'Medium Bias' | 'Low Bias';
-  if (overallScore >= 65) {
-    classification = 'High Bias';
-  } else if (overallScore >= 45) {
-    classification = 'Medium Bias';
-  } else {
-    classification = 'Low Bias';
-  }
-
-  return {
-    political_bias: politicalBias,
-    regional_bias: regionalBias,
-    sentiment_bias: sentimentBias,
-    source_reliability_bias: sourceReliabilityBias,
-    representation_bias: representationBias,
-    language_bias: languageBias,
-    overall_score: overallScore,
-    classification,
-  };
-}
-
-function analyzePoliticalBias(text: string, title: string): BiasScore {
-  let score = 50;
-  const evidence: string[] = [];
-
-  const politicalKeywords = ['government', 'minister', 'party', 'politics', 'election'];
-  const hasPolitical = politicalKeywords.some(k => text.includes(k));
-  if (hasPolitical) {
-    score += 10;
-    evidence.push('Political content detected - inherent ideological bias expected');
-  }
-
-  return {
-    score: Math.min(100, score),
-    evidence,
-    explanation: evidence.join('. ') || 'Baseline political bias score applied',
-  };
-}
-
-function analyzeRegionalBias(text: string, title: string): BiasScore {
-  let score = 50;
-  const evidence: string[] = [];
-
-  const regionKeywords = ['delhi', 'mumbai', 'bangalore', 'chennai', 'state', 'city'];
-  const hasRegion = regionKeywords.some(k => text.includes(k));
-  if (hasRegion) {
-    score += 10;
-    evidence.push('Geographic content reflects location-based editorial bias');
-  }
-
-  return {
-    score: Math.min(100, score),
-    evidence,
-    explanation: evidence.join('. ') || 'Baseline regional bias score applied',
-  };
-}
-
-function analyzeSentimentBias(text: string, title: string): BiasScore {
-  const score = 55;
-  const evidence: string[] = ['Sentiment analysis baseline applied'];
-
-  return {
-    score,
-    evidence,
-    explanation: 'Sentiment framing inherently present in news coverage',
-  };
-}
-
-function analyzeSourceReliability(text: string, title: string): BiasScore {
-  const score = 60;
-  const evidence: string[] = ['Source quality baseline - most articles lack comprehensive attribution'];
-
-  return {
-    score,
-    evidence,
-    explanation: 'Baseline reflects typical gaps in source transparency',
-  };
-}
-
-function analyzeRepresentationBias(text: string, title: string): BiasScore {
-  const score = 50;
-  const evidence: string[] = ['Representation baseline - voice diversity typically limited'];
-
-  return {
-    score,
-    evidence,
-    explanation: 'Baseline reflects structural imbalances in stakeholder representation',
-  };
-}
-
-function analyzeLanguageBias(text: string, title: string, originalText: string): BiasScore {
-  const score = 45;
-  const evidence: string[] = ['Language framing baseline applied'];
-
-  return {
-    score,
-    evidence,
-    explanation: 'Word choice and framing create inherent perspective bias',
-  };
-}

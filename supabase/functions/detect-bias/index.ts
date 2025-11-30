@@ -6,27 +6,11 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
 };
 
-interface BiasDetectionRequest {
-  title: string;
-  content: string;
-  feedbackId?: string;
-}
-
 interface BiasScore {
   score: number;
   evidence: string[];
   explanation: string;
-}
-
-interface BiasAnalysisResult {
-  political_bias: BiasScore;
-  regional_bias: BiasScore;
-  sentiment_bias: BiasScore;
-  source_reliability_bias: BiasScore;
-  representation_bias: BiasScore;
-  language_bias: BiasScore;
-  overall_score: number;
-  classification: 'High Bias' | 'Medium Bias' | 'Low Bias';
+  indicators: { [key: string]: number };
 }
 
 Deno.serve(async (req: Request) => {
@@ -40,73 +24,99 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { title, content, feedbackId }: BiasDetectionRequest = await req.json();
+    const { title, content, feedbackId } = await req.json();
 
     if (!title || !content) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Title and content are required' }),
+        JSON.stringify({ success: false, error: 'Title and content required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const fullText = `${title} ${content}`;
-    const biasAnalysis = detectBias(fullText, title, content);
-    const sentimentAnalysis = analyzeSentiment(fullText);
+    const lowerText = fullText.toLowerCase();
+    const lowerTitle = title.toLowerCase();
+    const words = lowerText.split(/\s+/);
+    const sentences = fullText.split(/[.!?]+/).filter((s: string) => s.trim().length > 0);
+
+    const politicalBias = analyzePoliticalBias(lowerText, lowerTitle, words, sentences);
+    const regionalBias = analyzeRegionalBias(lowerText, lowerTitle, words, sentences);
+    const sentimentBias = analyzeSentimentBias(lowerText, lowerTitle, words, sentences, title);
+    const sourceReliabilityBias = analyzeSourceReliability(lowerText, lowerTitle, words, sentences);
+    const representationBias = analyzeRepresentationBias(lowerText, lowerTitle, words, sentences);
+    const languageBias = analyzeLanguageBias(lowerText, lowerTitle, words, sentences, title);
+
+    const overallScore = (
+      politicalBias.score +
+      regionalBias.score +
+      sentimentBias.score +
+      sourceReliabilityBias.score +
+      representationBias.score +
+      languageBias.score
+    ) / 6;
+
+    let classification: string;
+    if (overallScore >= 65) {
+      classification = 'High Bias';
+    } else if (overallScore >= 35) {
+      classification = 'Medium Bias';
+    } else {
+      classification = 'Low Bias';
+    }
+
+    const sentimentAnalysis = analyzeSentiment(fullText, title, words);
 
     if (feedbackId) {
-      const { error: upsertError } = await supabase
-        .from('ai_analyses')
-        .upsert({
-          feedback_id: feedbackId,
-          sentiment_score: sentimentAnalysis.score,
-          sentiment_label: sentimentAnalysis.label,
-          topics: [],
-          entities: [],
-          keywords: [],
-          language_detected: 'en',
-          confidence_score: 0.85,
-          bias_indicators: {
-            political_bias: biasAnalysis.political_bias.score / 100,
-            regional_bias: biasAnalysis.regional_bias.score / 100,
-            sentiment_bias: biasAnalysis.sentiment_bias.score / 100,
-            source_reliability_bias: biasAnalysis.source_reliability_bias.score / 100,
-            representation_bias: biasAnalysis.representation_bias.score / 100,
-            language_bias: biasAnalysis.language_bias.score / 100,
-            overall_score: biasAnalysis.overall_score,
-            classification: biasAnalysis.classification,
-            detailed_analysis: {
-              political: biasAnalysis.political_bias,
-              regional: biasAnalysis.regional_bias,
-              sentiment: biasAnalysis.sentiment_bias,
-              source_reliability: biasAnalysis.source_reliability_bias,
-              representation: biasAnalysis.representation_bias,
-              language: biasAnalysis.language_bias,
-            },
+      await supabase.from('ai_analyses').upsert({
+        feedback_id: feedbackId,
+        sentiment_score: sentimentAnalysis.score,
+        sentiment_label: sentimentAnalysis.label,
+        topics: sentimentAnalysis.topics,
+        entities: sentimentAnalysis.entities,
+        keywords: sentimentAnalysis.keywords,
+        language_detected: detectLanguage(fullText),
+        confidence_score: sentimentAnalysis.confidence,
+        bias_indicators: {
+          political_bias: politicalBias.score / 100,
+          regional_bias: regionalBias.score / 100,
+          sentiment_bias: sentimentBias.score / 100,
+          source_reliability_bias: sourceReliabilityBias.score / 100,
+          representation_bias: representationBias.score / 100,
+          language_bias: languageBias.score / 100,
+          overall_score: Math.round(overallScore * 100) / 100,
+          classification: classification,
+          detailed_analysis: {
+            political: politicalBias,
+            regional: regionalBias,
+            sentiment: sentimentBias,
+            source_reliability: sourceReliabilityBias,
+            representation: representationBias,
+            language: languageBias,
           },
-        }, {
-          onConflict: 'feedback_id'
-        });
+        },
+      }, { onConflict: 'feedback_id' });
 
-      if (upsertError) {
-        console.error('Error upserting analysis:', upsertError);
-      }
-
-      const { error: statusError } = await supabase
-        .from('feedback_items')
-        .update({ status: 'analyzed' })
-        .eq('id', feedbackId);
-
-      if (statusError) {
-        console.error('Error updating feedback status:', statusError);
-      }
+      await supabase.from('feedback_items').update({ status: 'analyzed' }).eq('id', feedbackId);
     }
 
     return new Response(
-      JSON.stringify({ success: true, analysis: biasAnalysis }),
+      JSON.stringify({
+        success: true,
+        analysis: {
+          political_bias: politicalBias,
+          regional_bias: regionalBias,
+          sentiment_bias: sentimentBias,
+          source_reliability_bias: sourceReliabilityBias,
+          representation_bias: representationBias,
+          language_bias: languageBias,
+          overall_score: Math.round(overallScore * 100) / 100,
+          classification
+        },
+        sentiment: sentimentAnalysis
+      }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-  } catch (error) {
-    console.error('Error in detect-bias:', error);
+  } catch (error: any) {
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -114,336 +124,318 @@ Deno.serve(async (req: Request) => {
   }
 });
 
-function detectBias(text: string, title: string, originalContent: string): BiasAnalysisResult {
-  const lowerText = text.toLowerCase();
-  const lowerTitle = title.toLowerCase();
-
-  const politicalBias = analyzePoliticalBias(lowerText, lowerTitle);
-  const regionalBias = analyzeRegionalBias(lowerText, lowerTitle);
-  const sentimentBias = analyzeSentimentBias(lowerText, lowerTitle);
-  const sourceReliabilityBias = analyzeSourceReliability(lowerText, lowerTitle);
-  const representationBias = analyzeRepresentationBias(lowerText, lowerTitle);
-  const languageBias = analyzeLanguageBias(lowerText, lowerTitle, originalContent);
-
-  const overallScore = (
-    politicalBias.score +
-    regionalBias.score +
-    sentimentBias.score +
-    sourceReliabilityBias.score +
-    representationBias.score +
-    languageBias.score
-  ) / 6;
-
-  let classification: 'High Bias' | 'Medium Bias' | 'Low Bias';
-  if (overallScore >= 70) {
-    classification = 'High Bias';
-  } else if (overallScore >= 40) {
-    classification = 'Medium Bias';
-  } else {
-    classification = 'Low Bias';
-  }
-
-  return {
-    political_bias: politicalBias,
-    regional_bias: regionalBias,
-    sentiment_bias: sentimentBias,
-    source_reliability_bias: sourceReliabilityBias,
-    representation_bias: representationBias,
-    language_bias: languageBias,
-    overall_score: Math.round(overallScore * 100) / 100,
-    classification,
-  };
-}
-
-function analyzePoliticalBias(text: string, title: string): BiasScore {
+function analyzePoliticalBias(text: string, title: string, words: string[], sentences: string[]): BiasScore {
   let score = 0;
   const evidence: string[] = [];
+  const indicators: { [key: string]: number } = {};
 
-  const proGovtTerms = ['announces', 'launches', 'inaugurates', 'achievement', 'success', 'progress', 'development', 'milestone', 'historic'];
-  const antiGovtTerms = ['fails', 'criticism', 'protest', 'controversy', 'scandal', 'corruption', 'inefficiency', 'condemn'];
-  const polarizingTerms = ['bjp', 'congress', 'modi', 'gandhi', 'left', 'right', 'opposition', 'ruling'];
-  const strongOpinions = ['must', 'should', 'never', 'always', 'only', 'obviously', 'clearly'];
+  const proGovt = ['announces', 'launches', 'inaugurates', 'achievement', 'success', 'progress', 'milestone', 'historic', 'breakthrough'];
+  const antiGovt = ['fails', 'failure', 'criticism', 'protest', 'controversy', 'scandal', 'corruption', 'condemn', 'blunder'];
+  const parties = ['bjp', 'congress', 'aap', 'tmc', 'left', 'right-wing'];
+  const leaders = ['modi', 'gandhi', 'kejriwal', 'mamata', 'yogi'];
+  const opinions = ['must', 'should', 'ought to', 'need to', 'obviously', 'clearly'];
 
-  let proCount = 0;
-  let antiCount = 0;
+  let proCount = 0, antiCount = 0;
 
-  proGovtTerms.forEach(term => {
-    if (text.includes(term)) {
-      proCount++;
-      if (title.includes(term)) proCount++;
-    }
+  proGovt.forEach(term => {
+    const count = (text.match(new RegExp(term, 'g')) || []).length;
+    const titleCount = (title.match(new RegExp(term, 'g')) || []).length;
+    proCount += count + (titleCount * 2.5);
   });
 
-  antiGovtTerms.forEach(term => {
-    if (text.includes(term)) {
-      antiCount++;
-      if (title.includes(term)) antiCount++;
-    }
+  antiGovt.forEach(term => {
+    const count = (text.match(new RegExp(term, 'g')) || []).length;
+    const titleCount = (title.match(new RegExp(term, 'g')) || []).length;
+    antiCount += count + (titleCount * 2.5);
   });
 
-  const polarizingCount = polarizingTerms.filter(t => text.includes(t)).length;
-  const opinionCount = strongOpinions.filter(t => text.includes(t)).length;
+  const total = proCount + antiCount;
+  const imbalance = total > 0 ? Math.abs(proCount - antiCount) / total : 0;
 
-  if (proCount > 3 || antiCount > 3) {
-    score += 30;
-    evidence.push(`Strong ${proCount > antiCount ? 'pro' : 'anti'}-government language detected`);
+  if (total > 5) {
+    const pts = Math.min(35, total * 3);
+    score += pts;
+    evidence.push(`Strong ${proCount > antiCount ? 'pro' : 'anti'}-govt language (${Math.round(total)} instances)`);
+    indicators['political_language'] = pts;
   }
 
-  if (polarizingCount > 2) {
-    score += 20;
-    evidence.push(`Multiple political party references (${polarizingCount}) suggest partisan framing`);
+  if (imbalance > 0.6 && total > 3) {
+    const pts = Math.min(25, imbalance * 40);
+    score += pts;
+    evidence.push(`${Math.round(imbalance * 100)}% political imbalance`);
+    indicators['imbalance'] = pts;
   }
 
+  const polarizing = parties.filter(p => text.includes(p)).length + leaders.filter(l => text.includes(l)).length;
+  if (polarizing > 3) {
+    const pts = Math.min(20, polarizing * 4);
+    score += pts;
+    evidence.push(`${polarizing} partisan references`);
+    indicators['partisan'] = pts;
+  }
+
+  const opinionCount = opinions.filter(o => text.includes(o)).length;
   if (opinionCount > 2) {
-    score += 15;
-    evidence.push(`Prescriptive language detected (${opinionCount} instances)`);
-  }
-
-  if (Math.abs(proCount - antiCount) > 3) {
-    score += 25;
-    evidence.push('Significant imbalance in positive vs negative political framing');
+    const pts = Math.min(15, opinionCount * 3);
+    score += pts;
+    evidence.push(`${opinionCount} prescriptive statements`);
+    indicators['prescriptive'] = pts;
   }
 
   return {
-    score: Math.min(100, score),
+    score: Math.min(100, Math.round(score)),
     evidence,
-    explanation: evidence.length > 0 ? evidence.join('; ') : 'Minimal political bias detected',
+    explanation: evidence.length > 0 ? evidence.join('; ') : 'Balanced political reporting',
+    indicators
   };
 }
 
-function analyzeRegionalBias(text: string, title: string): BiasScore {
+function analyzeRegionalBias(text: string, title: string, words: string[], sentences: string[]): BiasScore {
   let score = 0;
   const evidence: string[] = [];
+  const indicators: { [key: string]: number } = {};
 
-  const regions = ['north', 'south', 'east', 'west', 'central', 'northeast'];
-  const states = ['delhi', 'mumbai', 'bengaluru', 'chennai', 'kolkata', 'hyderabad', 'gujarat', 'bihar', 'kerala'];
-  const urbanRural = ['urban', 'rural', 'village', 'city', 'metro'];
+  const states = ['delhi', 'mumbai', 'bengaluru', 'chennai', 'kolkata', 'hyderabad', 'gujarat', 'bihar', 'kerala', 'punjab'];
+  const urban = ['urban', 'city', 'metro', 'metropolitan'];
+  const rural = ['rural', 'village', 'countryside', 'farmers'];
 
-  const regionMentions = regions.filter(r => text.includes(r)).length;
-  const stateMentions = states.filter(s => text.includes(s)).length;
-  const urbanRuralMentions = urbanRural.filter(u => text.includes(u)).length;
+  const stateCount = states.filter(s => text.includes(s)).length;
+  const urbanCount = urban.filter(u => text.includes(u)).length;
+  const ruralCount = rural.filter(r => text.includes(r)).length;
 
-  if (stateMentions > 3) {
-    score += 20;
-    evidence.push(`Heavy focus on specific regions (${stateMentions} states mentioned)`);
+  if (stateCount > 4) {
+    const pts = Math.min(25, stateCount * 3);
+    score += pts;
+    evidence.push(`${stateCount} states mentioned - narrow focus`);
+    indicators['geographic_concentration'] = pts;
   }
 
-  if (text.includes('urban') && !text.includes('rural')) {
-    score += 25;
-    evidence.push('Urban-centric perspective, rural viewpoints absent');
-  } else if (text.includes('rural') && !text.includes('urban')) {
-    score += 15;
-    evidence.push('Rural-focused narrative');
-  }
-
-  if (regionMentions === 0 && stateMentions > 0) {
-    score += 15;
-    evidence.push('Narrow geographic scope limits national perspective');
+  if ((urbanCount > 2 && ruralCount === 0) || (ruralCount > 2 && urbanCount === 0)) {
+    const pts = Math.min(30, Math.abs(urbanCount - ruralCount) * 5);
+    score += pts;
+    evidence.push(`${urbanCount > ruralCount ? 'Urban' : 'Rural'}-centric bias`);
+    indicators['urban_rural_imbalance'] = pts;
   }
 
   return {
-    score: Math.min(100, score),
+    score: Math.min(100, Math.round(score)),
     evidence,
-    explanation: evidence.length > 0 ? evidence.join('; ') : 'Balanced regional representation',
+    explanation: evidence.length > 0 ? evidence.join('; ') : 'Balanced regional coverage',
+    indicators
   };
 }
 
-function analyzeSentimentBias(text: string, title: string): BiasScore {
+function analyzeSentimentBias(text: string, title: string, words: string[], sentences: string[], originalTitle: string): BiasScore {
   let score = 0;
   const evidence: string[] = [];
+  const indicators: { [key: string]: number } = {};
 
-  const negativeWords = ['crisis', 'disaster', 'collapse', 'chaos', 'failure', 'threat', 'danger', 'worst', 'terrible'];
-  const positiveWords = ['excellent', 'outstanding', 'perfect', 'best', 'wonderful', 'amazing', 'brilliant'];
-  const emotionalWords = ['outrage', 'fury', 'shock', 'horror', 'devastation', 'ecstatic', 'thrilled'];
+  const strongNeg = ['crisis', 'disaster', 'catastrophe', 'collapse', 'chaos', 'nightmare', 'devastating', 'horrific'];
+  const strongPos = ['excellent', 'outstanding', 'perfect', 'magnificent', 'brilliant', 'spectacular'];
+  const emotional = ['outrage', 'fury', 'shock', 'horror', 'devastation', 'ecstatic'];
 
-  const negCount = negativeWords.filter(w => text.includes(w)).length;
-  const posCount = positiveWords.filter(w => text.includes(w)).length;
-  const emotCount = emotionalWords.filter(w => text.includes(w)).length;
+  const negCount = strongNeg.filter(w => text.includes(w)).length;
+  const posCount = strongPos.filter(w => text.includes(w)).length;
+  const emotCount = emotional.filter(w => text.includes(w)).length;
 
-  if (negCount > 3 || posCount > 3) {
-    score += 30;
-    evidence.push(`Heavily ${negCount > posCount ? 'negative' : 'positive'} language (${Math.max(negCount, posCount)} loaded terms)`);
+  if (negCount > 2 || posCount > 2) {
+    const intensity = Math.max(negCount, posCount);
+    const pts = Math.min(35, intensity * 7);
+    score += pts;
+    evidence.push(`${intensity} charged ${negCount > posCount ? 'negative' : 'positive'} terms`);
+    indicators['charged'] = pts;
   }
 
   if (emotCount > 2) {
-    score += 25;
-    evidence.push(`Emotional language detected (${emotCount} instances) instead of factual reporting`);
+    const pts = Math.min(25, emotCount * 5);
+    score += pts;
+    evidence.push(`${emotCount} emotional terms`);
+    indicators['emotional'] = pts;
   }
 
-  if (Math.abs(negCount - posCount) > 3) {
-    score += 20;
-    evidence.push('Significant sentiment imbalance in word choice');
-  }
-
-  if (title.split(' ').some(w => negativeWords.includes(w.toLowerCase()))) {
+  if (strongNeg.some(w => originalTitle.toLowerCase().includes(w))) {
     score += 15;
-    evidence.push('Negative framing in headline');
+    evidence.push('Emotional headline');
+    indicators['headline'] = 15;
   }
 
   return {
-    score: Math.min(100, score),
+    score: Math.min(100, Math.round(score)),
     evidence,
-    explanation: evidence.length > 0 ? evidence.join('; ') : 'Neutral sentiment maintained',
+    explanation: evidence.length > 0 ? evidence.join('; ') : 'Neutral sentiment',
+    indicators
   };
 }
 
-function analyzeSourceReliability(text: string, title: string): BiasScore {
+function analyzeSourceReliability(text: string, title: string, words: string[], sentences: string[]): BiasScore {
   let score = 0;
   const evidence: string[] = [];
+  const indicators: { [key: string]: number } = {};
 
-  const unverifiedTerms = ['allegedly', 'reportedly', 'sources say', 'rumor', 'claims', 'according to'];
-  const certainTerms = ['confirmed', 'verified', 'officially', 'stated', 'announced'];
-  const anonymousSource = text.includes('anonymous') || text.includes('unnamed');
-  const quotedSources = (text.match(/"/g) || []).length / 2;
+  const unverified = ['allegedly', 'reportedly', 'sources say', 'rumor', 'claims'];
+  const weak = ['social media', 'twitter', 'facebook', 'viral'];
 
-  const unverifiedCount = unverifiedTerms.filter(t => text.includes(t)).length;
-  const certainCount = certainTerms.filter(t => text.includes(t)).length;
+  const unverCount = unverified.filter(t => text.includes(t)).length;
+  const weakCount = weak.filter(s => text.includes(s)).length;
+  const anonymous = text.includes('anonymous') || text.includes('unnamed');
 
-  if (unverifiedCount > 2) {
+  if (unverCount > 3) {
+    const pts = Math.min(30, unverCount * 5);
+    score += pts;
+    evidence.push(`${unverCount} unverified claims`);
+    indicators['unverified'] = pts;
+  }
+
+  if (weakCount > 2) {
+    const pts = Math.min(25, weakCount * 7);
+    score += pts;
+    evidence.push(`${weakCount} weak sources`);
+    indicators['weak_sources'] = pts;
+  }
+
+  if (anonymous) {
     score += 25;
-    evidence.push(`Multiple unverified claims (${unverifiedCount} instances)`);
-  }
-
-  if (anonymousSource && quotedSources < 2) {
-    score += 30;
-    evidence.push('Reliance on anonymous sources without corroboration');
-  }
-
-  if (certainCount === 0 && unverifiedCount > 0) {
-    score += 20;
-    evidence.push('Lack of verified sources or official statements');
-  }
-
-  if (text.includes('social media') || text.includes('twitter') || text.includes('facebook')) {
-    score += 15;
-    evidence.push('Social media cited as primary source');
+    evidence.push('Anonymous sources');
+    indicators['anonymous'] = 25;
   }
 
   return {
-    score: Math.min(100, score),
+    score: Math.min(100, Math.round(score)),
     evidence,
-    explanation: evidence.length > 0 ? evidence.join('; ') : 'Reliable sourcing practices observed',
+    explanation: evidence.length > 0 ? evidence.join('; ') : 'Strong sourcing',
+    indicators
   };
 }
 
-function analyzeRepresentationBias(text: string, title: string): BiasScore {
+function analyzeRepresentationBias(text: string, title: string, words: string[], sentences: string[]): BiasScore {
   let score = 0;
   const evidence: string[] = [];
+  const indicators: { [key: string]: number } = {};
 
-  const perspectives = ['government', 'opposition', 'expert', 'citizen', 'activist', 'official'];
+  const perspectives = ['government', 'opposition', 'expert', 'citizen', 'activist'];
   const viewpoints = perspectives.filter(p => text.includes(p)).length;
+  const hasCounter = ['however', 'but', 'although'].some(w => text.includes(w));
 
-  const oneWord = ['only', 'just', 'merely', 'simply'];
-  const exclusiveCount = oneWord.filter(w => text.includes(w)).length;
-
-  if (viewpoints < 2) {
+  if (viewpoints < 2 && words.length > 150) {
     score += 35;
-    evidence.push('Single perspective presented, lacking diverse viewpoints');
+    evidence.push('Single perspective');
+    indicators['single_view'] = 35;
   }
 
-  if (exclusiveCount > 2) {
-    score += 20;
-    evidence.push(`Exclusionary language (${exclusiveCount} instances) limits representation`);
-  }
-
-  if (!text.includes('however') && !text.includes('but') && !text.includes('although')) {
+  if (!hasCounter && words.length > 150) {
     score += 25;
-    evidence.push('No counterarguments or alternative perspectives presented');
-  }
-
-  const quotesFromGovt = /government|minister|official/.test(text) && (text.match(/"/g) || []).length > 2;
-  const quotesFromOthers = /critic|opposition|expert|activist/.test(text) && (text.match(/"/g) || []).length > 2;
-
-  if (quotesFromGovt && !quotesFromOthers) {
-    score += 20;
-    evidence.push('Only government voices quoted directly');
+    evidence.push('No counterarguments');
+    indicators['no_counter'] = 25;
   }
 
   return {
-    score: Math.min(100, score),
+    score: Math.min(100, Math.round(score)),
     evidence,
-    explanation: evidence.length > 0 ? evidence.join('; ') : 'Diverse perspectives represented',
+    explanation: evidence.length > 0 ? evidence.join('; ') : 'Diverse perspectives',
+    indicators
   };
 }
 
-function analyzeLanguageBias(text: string, title: string, originalContent: string): BiasScore {
+function analyzeLanguageBias(text: string, title: string, words: string[], sentences: string[], originalTitle: string): BiasScore {
   let score = 0;
   const evidence: string[] = [];
+  const indicators: { [key: string]: number } = {};
 
-  const sensationalWords = ['shocking', 'explosive', 'bombshell', 'stunning', 'unprecedented'];
-  const clickbaitPhrases = ['you won\'t believe', 'what happened next', 'shocking truth'];
-  const exaggerations = ['never', 'always', 'everyone', 'nobody', 'best ever', 'worst ever'];
+  const sensational = ['shocking', 'explosive', 'bombshell', 'stunning', 'unprecedented'];
+  const clickbait = ['you won\'t believe', 'what happened next', 'shocking truth'];
 
-  const sensationalCount = sensationalWords.filter(w => title.toLowerCase().includes(w)).length;
-  const clickbaitCount = clickbaitPhrases.filter(p => title.toLowerCase().includes(p)).length;
-  const exaggerationCount = exaggerations.filter(e => text.includes(e)).length;
+  const sensCount = sensational.filter(w => title.toLowerCase().includes(w)).length;
+  const clickCount = clickbait.filter(p => title.toLowerCase().includes(p)).length;
 
-  if (sensationalCount > 0) {
-    score += 30;
-    evidence.push(`Sensational headline (${sensationalCount} loaded terms)`);
+  if (sensCount > 0) {
+    const pts = Math.min(35, sensCount * 15);
+    score += pts;
+    evidence.push(`${sensCount} sensational terms in headline`);
+    indicators['sensational'] = pts;
   }
 
-  if (clickbaitCount > 0) {
+  if (clickCount > 0) {
     score += 40;
-    evidence.push('Clickbait-style headline detected');
+    evidence.push('Clickbait headline');
+    indicators['clickbait'] = 40;
   }
 
-  if (exaggerationCount > 3) {
-    score += 20;
-    evidence.push(`Exaggerated language (${exaggerationCount} absolute terms)`);
-  }
-
-  if (title.includes('!') || title.includes('?!')) {
+  if (originalTitle.includes('!') || originalTitle.includes('?!')) {
     score += 15;
-    evidence.push('Excessive punctuation in headline for emphasis');
+    evidence.push('Excessive punctuation');
+    indicators['punctuation'] = 15;
   }
 
   return {
-    score: Math.min(100, score),
+    score: Math.min(100, Math.round(score)),
     evidence,
-    explanation: evidence.length > 0 ? evidence.join('; ') : 'Neutral, professional language used',
+    explanation: evidence.length > 0 ? evidence.join('; ') : 'Professional language',
+    indicators
   };
 }
 
-function analyzeSentiment(text: string): { score: number; label: string } {
-  const lowerText = text.toLowerCase();
+function analyzeSentiment(text: string, title: string, words: string[]): any {
+  const positive = ['good', 'great', 'excellent', 'success', 'win', 'progress', 'improve', 'benefit', 'positive', 'achieve'];
+  const negative = ['bad', 'fail', 'crisis', 'problem', 'issue', 'concern', 'decline', 'loss', 'negative', 'threat'];
 
-  const positiveWords = ['good', 'great', 'excellent', 'success', 'win', 'progress', 'improve', 'benefit', 'positive', 'achieve'];
-  const negativeWords = ['bad', 'fail', 'crisis', 'problem', 'issue', 'concern', 'decline', 'loss', 'negative', 'threat'];
-  const mixedWords = ['but', 'however', 'although', 'despite', 'yet'];
+  let posCount = 0, negCount = 0;
 
-  let positiveCount = 0;
-  let negativeCount = 0;
-  let mixedCount = 0;
-
-  positiveWords.forEach(word => {
-    const matches = lowerText.match(new RegExp(word, 'g'));
-    if (matches) positiveCount += matches.length;
+  positive.forEach(word => {
+    const matches = text.match(new RegExp(`\\b${word}\\b`, 'g'));
+    if (matches) posCount += matches.length;
   });
 
-  negativeWords.forEach(word => {
-    const matches = lowerText.match(new RegExp(word, 'g'));
-    if (matches) negativeCount += matches.length;
+  negative.forEach(word => {
+    const matches = text.match(new RegExp(`\\b${word}\\b`, 'g'));
+    if (matches) negCount += matches.length;
   });
 
-  mixedWords.forEach(word => {
-    const matches = lowerText.match(new RegExp(word, 'g'));
-    if (matches) mixedCount += matches.length;
-  });
-
-  const total = positiveCount + negativeCount + 1;
-  const score = (positiveCount - negativeCount) / total;
+  const total = posCount + negCount + 1;
+  const score = Math.max(-1, Math.min(1, (posCount - negCount) / total));
 
   let label: string;
-  if (mixedCount > 2) {
-    label = 'mixed';
-  } else if (score > 0.2) {
-    label = 'positive';
-  } else if (score < -0.2) {
-    label = 'negative';
-  } else {
-    label = 'neutral';
-  }
+  if (score > 0.3) label = 'positive';
+  else if (score < -0.3) label = 'negative';
+  else label = 'neutral';
 
-  return { score: Math.max(-1, Math.min(1, score)), label };
+  const topics = extractTopics(text);
+  const entities = extractEntities(text);
+  const keywords = words.filter(w => w.length > 3).slice(0, 10);
+  const confidence = Math.min(0.95, (posCount + negCount) / total);
+
+  return { score, label, topics, entities, keywords, confidence };
+}
+
+function extractTopics(text: string): string[] {
+  const topics: string[] = [];
+  const keywords = {
+    'Politics': ['government', 'minister', 'party', 'election'],
+    'Economy': ['economy', 'business', 'market', 'financial'],
+    'Health': ['health', 'hospital', 'medical', 'doctor'],
+    'Education': ['education', 'school', 'university', 'student'],
+    'Technology': ['technology', 'digital', 'ai', 'software']
+  };
+
+  Object.entries(keywords).forEach(([topic, words]) => {
+    if (words.some(k => text.includes(k))) topics.push(topic);
+  });
+
+  return topics.slice(0, 5);
+}
+
+function extractEntities(text: string): any[] {
+  const entities: any[] = [];
+  const locations = ['India', 'Delhi', 'Mumbai', 'Bangalore', 'Chennai'];
+  locations.forEach(l => {
+    if (text.includes(l)) entities.push({ type: 'LOCATION', text: l });
+  });
+  return entities.slice(0, 10);
+}
+
+function detectLanguage(text: string): string {
+  if (/[\u0900-\u097F]/.test(text)) return 'Hindi';
+  if (/[\u0B80-\u0BFF]/.test(text)) return 'Tamil';
+  if (/[\u0C00-\u0C7F]/.test(text)) return 'Telugu';
+  if (/[\u0980-\u09FF]/.test(text)) return 'Bengali';
+  return 'English';
 }
