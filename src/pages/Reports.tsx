@@ -51,7 +51,20 @@ export default function Reports() {
   const generateReport = async () => {
     setIsGenerating(true);
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        alert('You must be logged in to generate reports');
+        return;
+      }
+
       const feedback = await dataService.getFeedbackItems();
+
+      if (feedback.length === 0) {
+        alert('No feedback data available to generate report');
+        return;
+      }
+
       const analyzedFeedback = feedback.filter(f => f.status === 'analyzed');
 
       const regions = [...new Set(feedback.map(f => f.region))];
@@ -94,29 +107,35 @@ export default function Reports() {
         }
       ];
 
+      const reportData = {
+        title: `Media Analysis Report - ${new Date().toLocaleDateString()}`,
+        report_type: 'monthly',
+        summary: `Comprehensive analysis of ${analyzedFeedback.length} media articles across ${regions.length} regions. Total articles: ${feedback.length}, Regions covered: ${regions.length}, Languages: ${new Set(feedback.map(f => f.original_language)).size}`,
+        period_start: periodStart.toISOString().split('T')[0],
+        period_end: periodEnd.toISOString().split('T')[0],
+        regions,
+        departments,
+        status: 'published',
+        insights,
+        recommendations,
+        created_by: user.id
+      };
+
+      console.log('Inserting report:', reportData);
+
       const { data: newReport, error } = await supabase
         .from('reports')
-        .insert([
-          {
-            title: `Media Analysis Report - ${new Date().toLocaleDateString()}`,
-            report_type: 'monthly',
-            summary: `Comprehensive analysis of ${analyzedFeedback.length} media articles across ${regions.length} regions. Total articles: ${feedback.length}, Regions covered: ${regions.length}, Languages: ${new Set(feedback.map(f => f.original_language)).size}`,
-            period_start: periodStart.toISOString().split('T')[0],
-            period_end: periodEnd.toISOString().split('T')[0],
-            regions,
-            departments,
-            status: 'published',
-            insights,
-            recommendations
-          }
-        ])
+        .insert([reportData])
         .select()
         .single();
 
       if (error) {
         console.error('Error inserting report:', error);
+        alert(`Failed to create report: ${error.message}`);
         throw error;
       }
+
+      console.log('Report created successfully:', newReport);
 
       await loadReports();
       alert('Report generated successfully!');
