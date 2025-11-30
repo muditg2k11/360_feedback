@@ -12,6 +12,8 @@ import {
   LogOut,
   Menu,
   X,
+  Building2,
+  UserCircle,
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -32,6 +34,8 @@ export default function Layout({ children, currentPage, onNavigate }: LayoutProp
     { name: 'Regional Analytics', icon: BarChart3, page: 'regional' },
     { name: 'Reports', icon: FileText, page: 'reports' },
     { name: 'Media Sources', icon: Radio, page: 'sources' },
+    { name: 'Departments', icon: Building2, page: 'departments' },
+    { name: 'PIB Officers', icon: UserCircle, page: 'officers' },
     { name: 'User Management', icon: Users, page: 'users', adminOnly: true },
   ];
 

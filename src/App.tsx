@@ -11,6 +11,8 @@ import RegionalAnalytics from './pages/RegionalAnalytics';
 import Reports from './pages/Reports';
 import MediaSources from './pages/MediaSources';
 import UserManagement from './pages/UserManagement';
+import { Departments } from './pages/Departments';
+import { Officers } from './pages/Officers';
 
 function AppContent() {
   const { user, isLoading } = useAuth();
@@ -52,6 +54,10 @@ function AppContent() {
         return <Reports />;
       case 'sources':
         return <MediaSources />;
+      case 'departments':
+        return <Departments />;
+      case 'officers':
+        return <Officers />;
       case 'users':
         return <UserManagement />;
       default:
