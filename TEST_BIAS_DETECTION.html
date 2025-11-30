@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Bias Detection Function</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .status {
+            padding: 12px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-weight: 500;
+        }
+        .status.info { background: #e3f2fd; color: #1976d2; border-left: 4px solid #1976d2; }
+        .status.success { background: #e8f5e9; color: #388e3c; border-left: 4px solid #388e3c; }
+        .status.error { background: #ffebee; color: #d32f2f; border-left: 4px solid #d32f2f; }
+        .status.warning { background: #fff3e0; color: #f57c00; border-left: 4px solid #f57c00; }
+
+        button {
+            background: #2196f3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px 10px 0;
+            transition: background 0.3s;
+        }
+        button:hover:not(:disabled) {
+            background: #1976d2;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        button.secondary {
+            background: #4caf50;
+        }
+        button.secondary:hover:not(:disabled) {
+            background: #388e3c;
+        }
+        button.danger {
+            background: #f44336;
+        }
+        button.danger:hover:not(:disabled) {
+            background: #d32f2f;
+        }
+
+        .config {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .config label {
+            display: block;
+            margin: 10px 0 5px;
+            font-weight: 600;
+            color: #555;
+        }
+        .config input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+        }
+
+        pre {
+            background: #263238;
+            color: #aed581;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            max-height: 400px;
+            font-size: 13px;
+        }
+
+        .result {
+            margin-top: 20px;
+        }
+
+        .step {
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 4px solid #2196f3;
+            background: #f5f5f5;
+        }
+        .step h3 {
+            margin: 0 0 10px 0;
+            color: #2196f3;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        .badge.deployed { background: #4caf50; color: white; }
+        .badge.not-deployed { background: #f44336; color: white; }
+        .badge.unknown { background: #ff9800; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Bias Detection Test Suite</h1>
+        <p style="color: #666;">Test if your Supabase Edge Functions are deployed and working correctly</p>
+
+        <div class="config">
+            <label>Supabase URL:</label>
+            <input type="text" id="supabaseUrl" placeholder="https://xxxxx.supabase.co">
+
+            <label>Supabase Anon Key:</label>
+            <input type="password" id="supabaseKey" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...">
+
+            <button onclick="saveConfig()" style="margin-top: 15px;">💾 Save Configuration</button>
+        </div>
+
+        <div id="status" class="status info">
+            ⚙️ Enter your Supabase credentials above and click Save Configuration
+        </div>
+
+        <div style="margin-top: 30px;">
+            <h2>Test Functions</h2>
+
+            <div class="step">
+                <h3>1. Check if detect-bias is deployed <span id="detectBiasStatus" class="badge unknown">?</span></h3>
+                <p>Tests if the bias detection function exists and responds</p>
+                <button onclick="testDetectBias()" id="testDetectBiasBtn">🧪 Test detect-bias</button>
+            </div>
+
+            <div class="step">
+                <h3>2. Check if analyze-pending is deployed <span id="analyzePendingStatus" class="badge unknown">?</span></h3>
+                <p>Tests if the batch analysis function exists</p>
+                <button onclick="testAnalyzePending()" id="testAnalyzePendingBtn">🧪 Test analyze-pending</button>
+            </div>
+
+            <div class="step">
+                <h3>3. Check database articles <span id="dbStatus" class="badge unknown">?</span></h3>
+                <p>Checks how many articles need analysis</p>
+                <button onclick="checkDatabase()" id="checkDatabaseBtn">📊 Check Database</button>
+            </div>
+
+            <div class="step">
+                <h3>4. Analyze ALL pending articles</h3>
+                <p style="color: #f57c00; font-weight: 600;">⚠️ This will analyze all articles marked as "processing"</p>
+                <button onclick="analyzeAll()" id="analyzeAllBtn" class="secondary">🚀 Analyze All Pending</button>
+            </div>
+        </div>
+
+        <div class="result" id="result"></div>
+    </div>
+
+    <script>
+        let config = {
+            url: '',
+            key: ''
+        };
+
+        // Load saved config
+        window.onload = () => {
+            const saved = localStorage.getItem('supabaseConfig');
+            if (saved) {
+                config = JSON.parse(saved);
+                document.getElementById('supabaseUrl').value = config.url;
+                document.getElementById('supabaseKey').value = config.key;
+                updateStatus('✅ Configuration loaded from browser storage', 'success');
+            }
+        };
+
+        function saveConfig() {
+            config.url = document.getElementById('supabaseUrl').value.trim();
+            config.key = document.getElementById('supabaseKey').value.trim();
+
+            if (!config.url || !config.key) {
+                updateStatus('❌ Please fill in both Supabase URL and Anon Key', 'error');
+                return;
+            }
+
+            localStorage.setItem('supabaseConfig', JSON.stringify(config));
+            updateStatus('✅ Configuration saved! You can now run tests.', 'success');
+        }
+
+        function updateStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.className = `status ${type}`;
+            statusDiv.innerHTML = message;
+        }
+
+        function updateResult(html) {
+            document.getElementById('result').innerHTML = html;
+        }
+
+        async function testDetectBias() {
+            if (!config.url || !config.key) {
+                updateStatus('❌ Please save configuration first', 'error');
+                return;
+            }
+
+            updateStatus('🔄 Testing detect-bias function...', 'info');
+            const btn = document.getElementById('testDetectBiasBtn');
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`${config.url}/functions/v1/detect-bias`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${config.key}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        title: 'Test Article',
+                        content: 'This is a test article to check if the bias detection function is working correctly.',
+                        feedbackId: null
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('detectBiasStatus').className = 'badge deployed';
+                    document.getElementById('detectBiasStatus').textContent = '✓ DEPLOYED';
+                    updateStatus('✅ detect-bias function is deployed and working!', 'success');
+                    updateResult(`<pre>${JSON.stringify(data, null, 2)}</pre>`);
+                } else if (response.status === 404) {
+                    document.getElementById('detectBiasStatus').className = 'badge not-deployed';
+                    document.getElementById('detectBiasStatus').textContent = '✗ NOT DEPLOYED';
+                    updateStatus('❌ detect-bias function NOT FOUND. Please deploy it to Supabase.', 'error');
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+            } catch (error) {
+                document.getElementById('detectBiasStatus').className = 'badge not-deployed';
+                document.getElementById('detectBiasStatus').textContent = '✗ ERROR';
+                updateStatus(`❌ Error testing detect-bias: ${error.message}`, 'error');
+                updateResult(`<pre>${error.stack}</pre>`);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function testAnalyzePending() {
+            if (!config.url || !config.key) {
+                updateStatus('❌ Please save configuration first', 'error');
+                return;
+            }
+
+            updateStatus('🔄 Testing analyze-pending function...', 'info');
+            const btn = document.getElementById('testAnalyzePendingBtn');
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`${config.url}/functions/v1/analyze-pending`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${config.key}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('analyzePendingStatus').className = 'badge deployed';
+                    document.getElementById('analyzePendingStatus').textContent = '✓ DEPLOYED';
+                    updateStatus('✅ analyze-pending function is deployed!', 'success');
+                    updateResult(`<pre>${JSON.stringify(data, null, 2)}</pre>`);
+                } else if (response.status === 404) {
+                    document.getElementById('analyzePendingStatus').className = 'badge not-deployed';
+                    document.getElementById('analyzePendingStatus').textContent = '✗ NOT DEPLOYED';
+                    updateStatus('❌ analyze-pending function NOT FOUND. Please deploy it to Supabase.', 'error');
+                } else {
+                    throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+                }
+            } catch (error) {
+                document.getElementById('analyzePendingStatus').className = 'badge not-deployed';
+                document.getElementById('analyzePendingStatus').textContent = '✗ ERROR';
+                updateStatus(`❌ Error testing analyze-pending: ${error.message}`, 'error');
+                updateResult(`<pre>${error.stack}</pre>`);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function checkDatabase() {
+            if (!config.url || !config.key) {
+                updateStatus('❌ Please save configuration first', 'error');
+                return;
+            }
+
+            updateStatus('🔄 Checking database...', 'info');
+            const btn = document.getElementById('checkDatabaseBtn');
+            btn.disabled = true;
+
+            try {
+                // Query using Supabase REST API
+                const response = await fetch(`${config.url}/rest/v1/rpc/check_analysis_status`, {
+                    method: 'POST',
+                    headers: {
+                        'apikey': config.key,
+                        'Authorization': `Bearer ${config.key}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('dbStatus').className = 'badge deployed';
+                    document.getElementById('dbStatus').textContent = '✓ OK';
+                    updateStatus('✅ Database check complete', 'success');
+                    updateResult(`<pre>${JSON.stringify(data, null, 2)}</pre>`);
+                } else {
+                    // Fallback: just check if we can connect
+                    const testResponse = await fetch(`${config.url}/rest/v1/feedback_items?select=count`, {
+                        headers: {
+                            'apikey': config.key,
+                            'Authorization': `Bearer ${config.key}`
+                        }
+                    });
+
+                    if (testResponse.ok) {
+                        document.getElementById('dbStatus').className = 'badge deployed';
+                        document.getElementById('dbStatus').textContent = '✓ CONNECTED';
+                        updateStatus('✅ Database connection successful', 'success');
+                        updateResult(`<div class="status warning">⚠️ Direct status check not available. Use "Analyze All Pending" button to process articles.</div>`);
+                    } else {
+                        throw new Error('Cannot connect to database');
+                    }
+                }
+            } catch (error) {
+                document.getElementById('dbStatus').className = 'badge not-deployed';
+                document.getElementById('dbStatus').textContent = '✗ ERROR';
+                updateStatus(`❌ Error checking database: ${error.message}`, 'error');
+                updateResult(`<pre>${error.stack}</pre>`);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function analyzeAll() {
+            if (!config.url || !config.key) {
+                updateStatus('❌ Please save configuration first', 'error');
+                return;
+            }
+
+            if (!confirm('This will analyze ALL pending articles. This may take a few minutes. Continue?')) {
+                return;
+            }
+
+            updateStatus('🔄 Analyzing all pending articles... This may take 1-2 minutes.', 'info');
+            const btn = document.getElementById('analyzeAllBtn');
+            btn.disabled = true;
+
+            try {
+                const response = await fetch(`${config.url}/functions/v1/analyze-pending`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${config.key}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    updateStatus(`✅ Success! Analyzed ${data.analyzed} articles. Failed: ${data.failed}`, 'success');
+                    updateResult(`
+                        <div class="status success">
+                            <h3>✅ Analysis Complete!</h3>
+                            <p><strong>Total found:</strong> ${data.total}</p>
+                            <p><strong>Successfully analyzed:</strong> ${data.analyzed}</p>
+                            <p><strong>Failed:</strong> ${data.failed}</p>
+                            <p style="margin-top: 15px;">${data.message}</p>
+                        </div>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    `);
+                } else if (response.status === 404) {
+                    updateStatus('❌ analyze-pending function NOT FOUND. Please deploy it first.', 'error');
+                } else {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+            } catch (error) {
+                updateStatus(`❌ Error analyzing articles: ${error.message}`, 'error');
+                updateResult(`<pre>${error.stack}</pre>`);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
