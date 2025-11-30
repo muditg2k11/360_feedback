@@ -10,6 +10,7 @@ export default function BiasDetection() {
   const [analyses, setAnalyses] = useState<AIAnalysis[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isReanalyzing, setIsReanalyzing] = useState(false);
+  const [isAnalyzingPending, setIsAnalyzingPending] = useState(false);
   const [selectedFeedback, setSelectedFeedback] = useState<FeedbackItem | null>(null);
   const [selectedAnalysis, setSelectedAnalysis] = useState<AIAnalysis | null>(null);
 
@@ -32,8 +33,44 @@ export default function BiasDetection() {
     }
   };
 
+  const handleAnalyzePending = async () => {
+    setIsAnalyzingPending(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        alert('You must be logged in to analyze articles');
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-pending`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const result = await response.json();
+
+      if (result.success) {
+        alert(`Successfully analyzed ${result.analyzed} articles!`);
+        await loadData();
+      } else {
+        alert(`Error: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Error analyzing pending:', error);
+      alert('Failed to analyze pending articles. Check console for details.');
+    } finally {
+      setIsAnalyzingPending(false);
+    }
+  };
+
   const handleReanalyze = async () => {
-    if (!confirm('This will reanalyze all 326 articles with the updated bias detection algorithm. This may take a few minutes. Continue?')) {
+    if (!confirm('This will reanalyze all articles with the updated bias detection algorithm. This may take a few minutes. Continue?')) {
       return;
     }
 
@@ -172,14 +209,24 @@ export default function BiasDetection() {
             Identify and monitor potential bias in media coverage
           </p>
         </div>
-        <button
-          onClick={handleReanalyze}
-          disabled={isReanalyzing}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-        >
-          <RefreshCw className={`w-4 h-4 ${isReanalyzing ? 'animate-spin' : ''}`} />
-          {isReanalyzing ? 'Reanalyzing...' : 'Reanalyze All Articles'}
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleAnalyzePending}
+            disabled={isAnalyzingPending}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          >
+            <CheckCircle className={`w-4 h-4 ${isAnalyzingPending ? 'animate-spin' : ''}`} />
+            {isAnalyzingPending ? 'Analyzing...' : 'Analyze Pending'}
+          </button>
+          <button
+            onClick={handleReanalyze}
+            disabled={isReanalyzing}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${isReanalyzing ? 'animate-spin' : ''}`} />
+            {isReanalyzing ? 'Reanalyzing...' : 'Reanalyze All'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">

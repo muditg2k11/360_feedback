@@ -108,6 +108,8 @@ Deno.serve(async (req: Request) => {
         const articles = await scrapeRSSFeed(source);
 
         let savedCount = 0;
+        const savedArticleIds = [];
+
         for (const article of articles) {
           const { data: existing } = await supabase
             .from('feedback_items')
@@ -120,7 +122,7 @@ Deno.serve(async (req: Request) => {
             continue;
           }
 
-          const { error: insertError } = await supabase
+          const { data: inserted, error: insertError } = await supabase
             .from('feedback_items')
             .insert({
               source_id: source.id,
@@ -132,12 +134,47 @@ Deno.serve(async (req: Request) => {
               status: 'processing',
               collected_at: new Date().toISOString(),
               published_at: article.published_at?.toISOString(),
-            });
+            })
+            .select()
+            .single();
 
-          if (!insertError) {
+          if (!insertError && inserted) {
             savedCount++;
+            savedArticleIds.push({
+              id: inserted.id,
+              title: article.title,
+              content: article.content
+            });
           } else {
             console.error('Error inserting article:', insertError);
+          }
+        }
+
+        // Automatically analyze all saved articles
+        console.log(`Analyzing ${savedArticleIds.length} newly scraped articles...`);
+        for (const articleInfo of savedArticleIds) {
+          try {
+            const detectBiasUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/detect-bias`;
+            const response = await fetch(detectBiasUrl, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                title: articleInfo.title,
+                content: articleInfo.content,
+                feedbackId: articleInfo.id,
+              }),
+            });
+
+            if (response.ok) {
+              console.log(`✓ Analyzed: ${articleInfo.title.substring(0, 50)}...`);
+            } else {
+              console.error(`✗ Failed to analyze: ${articleInfo.title.substring(0, 50)}...`);
+            }
+          } catch (analyzeError) {
+            console.error('Error analyzing article:', analyzeError);
           }
         }
 
