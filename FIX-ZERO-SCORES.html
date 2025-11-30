@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Fix Zero Bias Scores - One Click Solution</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      padding: 50px;
+      border-radius: 24px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 600px;
+      width: 100%;
+      text-align: center;
+    }
+    h1 {
+      font-size: 2.5em;
+      color: #1a202c;
+      margin-bottom: 20px;
+    }
+    .subtitle {
+      color: #718096;
+      font-size: 1.1em;
+      margin-bottom: 40px;
+      line-height: 1.6;
+    }
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 20px 50px;
+      border-radius: 16px;
+      font-size: 1.3em;
+      font-weight: 700;
+      cursor: pointer;
+      width: 100%;
+      transition: all 0.3s ease;
+      box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+    }
+    button:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 15px 40px rgba(102, 126, 234, 0.5);
+    }
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .status {
+      margin-top: 30px;
+      padding: 20px;
+      border-radius: 12px;
+      font-size: 1.1em;
+    }
+    .status.info {
+      background: #ebf8ff;
+      color: #2c5282;
+      border: 2px solid #4299e1;
+    }
+    .status.success {
+      background: #f0fff4;
+      color: #22543d;
+      border: 2px solid #48bb78;
+    }
+    .status.error {
+      background: #fff5f5;
+      color: #742a2a;
+      border: 2px solid #fc8181;
+    }
+    .progress {
+      margin-top: 20px;
+      background: #edf2f7;
+      border-radius: 12px;
+      overflow: hidden;
+      height: 30px;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+      transition: width 0.5s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-top: 20px;
+    }
+    .stat {
+      background: #f7fafc;
+      padding: 15px;
+      border-radius: 12px;
+      border: 2px solid #e2e8f0;
+    }
+    .stat-value {
+      font-size: 2em;
+      font-weight: 800;
+      color: #667eea;
+    }
+    .stat-label {
+      color: #718096;
+      font-size: 0.9em;
+      margin-top: 5px;
+    }
+    .icon {
+      font-size: 4em;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">🎯</div>
+    <h1>Fix Zero Bias Scores</h1>
+    <p class="subtitle">
+      Click the button below to automatically analyze all articles showing 0% bias scores.
+      This will take 1-2 minutes.
+    </p>
+
+    <button id="fixBtn" onclick="fixZeroScores()">
+      🚀 Analyze All Pending Articles
+    </button>
+
+    <div id="output"></div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://yeggkvzngggjfbwkginb.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InllZ2drdnpuZ2dnamZid2tnaW5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjAwMjI5OTcsImV4cCI6MjA3NTU5ODk5N30.gnigRkVGoq0uiVwrPtKxm5XTWCrr1k7q2aL3ep4Q9so';
+
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    async function fixZeroScores() {
+      const btn = document.getElementById('fixBtn');
+      const output = document.getElementById('output');
+
+      btn.disabled = true;
+      btn.textContent = '⏳ Working...';
+
+      try {
+        // Get all articles without analysis
+        const { data: articles, error: fetchError } = await supabase
+          .from('feedback_items')
+          .select('id, title, content')
+          .eq('status', 'processing')
+          .limit(150);
+
+        if (fetchError) throw fetchError;
+
+        if (!articles || articles.length === 0) {
+          output.innerHTML = `
+            <div class="status success">
+              <div style="font-size: 3em; margin-bottom: 10px;">✅</div>
+              <h3>All Done!</h3>
+              <p style="margin-top: 10px;">No articles need analysis. All bias scores are up to date!</p>
+            </div>
+          `;
+          btn.textContent = '✓ Complete';
+          return;
+        }
+
+        const total = articles.length;
+        let processed = 0;
+        let errors = 0;
+
+        output.innerHTML = `
+          <div class="status info">
+            <h3>📊 Analyzing ${total} Articles</h3>
+            <div class="progress">
+              <div class="progress-bar" id="progressBar" style="width: 0%">0%</div>
+            </div>
+            <div class="stats">
+              <div class="stat">
+                <div class="stat-value" id="processedCount">0</div>
+                <div class="stat-label">Processed</div>
+              </div>
+              <div class="stat">
+                <div class="stat-value" id="errorCount">0</div>
+                <div class="stat-label">Errors</div>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // Process articles
+        for (const article of articles) {
+          try {
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/detect-bias`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                title: article.title,
+                content: article.content || article.title,
+                feedbackId: article.id
+              })
+            });
+
+            if (response.ok) {
+              processed++;
+            } else {
+              const errorText = await response.text();
+              console.error(`Failed article ${article.id}:`, errorText);
+              errors++;
+            }
+          } catch (err) {
+            console.error(`Error processing ${article.id}:`, err);
+            errors++;
+          }
+
+          // Update UI
+          const progress = Math.round((processed + errors) / total * 100);
+          document.getElementById('progressBar').style.width = `${progress}%`;
+          document.getElementById('progressBar').textContent = `${progress}%`;
+          document.getElementById('processedCount').textContent = processed;
+          document.getElementById('errorCount').textContent = errors;
+        }
+
+        // Show final result
+        output.innerHTML = `
+          <div class="status success">
+            <div style="font-size: 3em; margin-bottom: 15px;">✅</div>
+            <h3>Analysis Complete!</h3>
+
+            <div class="stats">
+              <div class="stat">
+                <div class="stat-value">${processed}</div>
+                <div class="stat-label">Successfully Analyzed</div>
+              </div>
+              <div class="stat">
+                <div class="stat-value">${errors}</div>
+                <div class="stat-label">Errors</div>
+              </div>
+            </div>
+
+            <div style="margin-top: 30px; padding: 20px; background: #ebf8ff; border-radius: 12px; border: 2px solid #4299e1;">
+              <h4 style="color: #2c5282; margin-bottom: 10px;">✨ Next Steps</h4>
+              <ol style="text-align: left; color: #2c5282; line-height: 1.8; padding-left: 20px;">
+                <li>Go back to your <strong>Bias Detection</strong> page</li>
+                <li>Press <strong>Cmd+Shift+R</strong> (Mac) or <strong>Ctrl+Shift+R</strong> (Windows) to hard refresh</li>
+                <li>Your articles will now show proper bias scores!</li>
+              </ol>
+            </div>
+
+            ${errors > 0 ? `
+              <div style="margin-top: 20px; padding: 15px; background: #fff5f5; border-radius: 12px; border: 2px solid #fc8181; text-align: left;">
+                <p style="color: #742a2a;"><strong>⚠️ Note:</strong> ${errors} articles had errors. Check browser console for details.</p>
+              </div>
+            ` : ''}
+          </div>
+        `;
+
+        btn.textContent = '✓ Analysis Complete';
+        btn.style.background = '#48bb78';
+
+      } catch (error) {
+        output.innerHTML = `
+          <div class="status error">
+            <div style="font-size: 3em; margin-bottom: 10px;">❌</div>
+            <h3>Error Occurred</h3>
+            <p style="margin-top: 15px; font-family: monospace; background: white; padding: 15px; border-radius: 8px; text-align: left; word-break: break-word;">
+              ${error.message}
+            </p>
+            <p style="margin-top: 15px; color: #742a2a;">
+              Please check your browser console (F12) for more details.
+            </p>
+          </div>
+        `;
+        btn.disabled = false;
+        btn.textContent = '🔄 Try Again';
+      }
+    }
+  </script>
+</body>
+</html>

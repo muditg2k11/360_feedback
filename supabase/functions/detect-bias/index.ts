@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     };
 
     if (feedbackId) {
-      await supabase.from('ai_analyses').upsert({
+      const { error: upsertError } = await supabase.from('ai_analyses').upsert({
         feedback_id: feedbackId,
         sentiment_score: sentimentAnalysis.score,
         sentiment_label: sentimentAnalysis.label,
@@ -84,7 +84,16 @@ Deno.serve(async (req) => {
         },
       }, { onConflict: 'feedback_id' });
 
-      await supabase.from('feedback_items').update({ status: 'analyzed' }).eq('id', feedbackId);
+      if (upsertError) {
+        console.error('Database upsert error:', upsertError);
+        throw new Error(`Failed to save analysis: ${upsertError.message}`);
+      }
+
+      const { error: updateError } = await supabase.from('feedback_items').update({ status: 'analyzed' }).eq('id', feedbackId);
+
+      if (updateError) {
+        console.error('Status update error:', updateError);
+      }
     }
 
     return new Response(
@@ -306,7 +315,7 @@ function analyzeLanguageBias(text: string): BiasAnalysis {
   if (allCapsWords > 0) {
     score += allCapsWords * 10;
     evidence.push(`${allCapsWords} words in ALL CAPS`);
-  }
+    }
 
   score = Math.min(100, score);
 
