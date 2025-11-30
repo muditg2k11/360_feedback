@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
-import { FileText, Download, Calendar, Users, MapPin, CheckCircle } from 'lucide-react';
+import { FileText, Download, Calendar, Users, MapPin, CheckCircle, Loader, TrendingUp, AlertCircle } from 'lucide-react';
 import { dataService } from '../services/dataService';
 import { Report } from '../types';
+import { supabase } from '../lib/supabase';
 
 export default function Reports() {
   const [reports, setReports] = useState<Report[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [feedbackStats, setFeedbackStats] = useState<any>(null);
 
   useEffect(() => {
     loadReports();
+    loadFeedbackStats();
   }, []);
 
   const loadReports = async () => {
@@ -19,6 +23,110 @@ export default function Reports() {
       console.error('Error loading reports:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadFeedbackStats = async () => {
+    try {
+      const feedback = await dataService.getFeedbackItems();
+      const stats = {
+        total: feedback.length,
+        analyzed: feedback.filter(f => f.status === 'analyzed').length,
+        pending: feedback.filter(f => f.status === 'processing' || f.status === 'pending').length,
+        byRegion: feedback.reduce((acc, item) => {
+          acc[item.region] = (acc[item.region] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>),
+        byLanguage: feedback.reduce((acc, item) => {
+          acc[item.original_language] = (acc[item.original_language] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>)
+      };
+      setFeedbackStats(stats);
+    } catch (error) {
+      console.error('Error loading stats:', error);
+    }
+  };
+
+  const generateReport = async () => {
+    setIsGenerating(true);
+    try {
+      const feedback = await dataService.getFeedbackItems();
+      const analyzedFeedback = feedback.filter(f => f.status === 'analyzed');
+
+      const regions = [...new Set(feedback.map(f => f.region))];
+      const departments = ['Information & Broadcasting', 'Media Relations'];
+
+      const periodEnd = new Date();
+      const periodStart = new Date();
+      periodStart.setDate(periodStart.getDate() - 30);
+
+      const regionStats = regions.map(region => {
+        const regionFeedback = analyzedFeedback.filter(f => f.region === region);
+        return {
+          region,
+          count: regionFeedback.length,
+          avgSentiment: regionFeedback.length > 0
+            ? regionFeedback.reduce((sum, f) => sum + (f.sentiment_score || 0), 0) / regionFeedback.length
+            : 0
+        };
+      }).sort((a, b) => b.count - a.count);
+
+      const insights = [
+        {
+          title: `Total ${analyzedFeedback.length} articles analyzed in the last 30 days`,
+          description: `Across ${regions.length} regions with ${new Set(feedback.map(f => f.original_language)).size} languages monitored`
+        },
+        {
+          title: `Top region: ${regionStats[0]?.region || 'N/A'}`,
+          description: `${regionStats[0]?.count || 0} articles collected with average sentiment of ${(regionStats[0]?.avgSentiment || 0).toFixed(2)}`
+        }
+      ];
+
+      const recommendations = [
+        {
+          priority: 'high',
+          recommendation: 'Increase monitoring in regions with lower coverage to ensure comprehensive national representation'
+        },
+        {
+          priority: 'medium',
+          recommendation: 'Focus on regional language content to better understand local sentiment and concerns'
+        }
+      ];
+
+      const { data: newReport, error } = await supabase
+        .from('reports')
+        .insert([
+          {
+            title: `Media Analysis Report - ${new Date().toLocaleDateString()}`,
+            report_type: 'monthly',
+            summary: `Comprehensive analysis of ${analyzedFeedback.length} media articles across ${regions.length} regions`,
+            period_start: periodStart.toISOString(),
+            period_end: periodEnd.toISOString(),
+            regions,
+            departments,
+            status: 'published',
+            insights,
+            recommendations,
+            data: {
+              totalArticles: feedback.length,
+              analyzedArticles: analyzedFeedback.length,
+              regionStats
+            }
+          }
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await loadReports();
+      alert('Report generated successfully!');
+    } catch (error) {
+      console.error('Error generating report:', error);
+      alert('Failed to generate report');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -67,15 +175,71 @@ export default function Reports() {
             Comprehensive analysis reports and insights
           </p>
         </div>
-        <button className="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm">
-          <FileText className="w-5 h-5" />
-          <span>Generate Report</span>
+        <button
+          onClick={generateReport}
+          disabled={isGenerating}
+          className="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm disabled:opacity-50"
+        >
+          {isGenerating ? (
+            <>
+              <Loader className="w-5 h-5 animate-spin" />
+              <span>Generating...</span>
+            </>
+          ) : (
+            <>
+              <FileText className="w-5 h-5" />
+              <span>Generate Report</span>
+            </>
+          )}
         </button>
       </div>
 
+      {feedbackStats && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Total Articles</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{feedbackStats.total}</p>
+              </div>
+              <FileText className="w-8 h-8 text-blue-600" />
+            </div>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Analyzed</p>
+                <p className="text-2xl font-bold text-green-600 mt-1">{feedbackStats.analyzed}</p>
+              </div>
+              <CheckCircle className="w-8 h-8 text-green-600" />
+            </div>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Pending</p>
+                <p className="text-2xl font-bold text-amber-600 mt-1">{feedbackStats.pending}</p>
+              </div>
+              <AlertCircle className="w-8 h-8 text-amber-600" />
+            </div>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Regions</p>
+                <p className="text-2xl font-bold text-purple-600 mt-1">{Object.keys(feedbackStats.byRegion).length}</p>
+              </div>
+              <MapPin className="w-8 h-8 text-purple-600" />
+            </div>
+          </div>
+        </div>
+      )}
+
       {reports.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-          <p className="text-gray-500">No reports available. Generate a report to get started.</p>
+          <TrendingUp className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <p className="text-gray-500 mb-2">No reports available yet</p>
+          <p className="text-sm text-gray-400">Click "Generate Report" to create your first comprehensive analysis report</p>
         </div>
       ) : (
         <div className="space-y-6">
