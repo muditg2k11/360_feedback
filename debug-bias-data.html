@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Debug Bias Data</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body {
+      font-family: system-ui;
+      max-width: 1400px;
+      margin: 20px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    button {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 10px 5px;
+    }
+    pre {
+      background: #2d2d2d;
+      color: #0f0;
+      padding: 15px;
+      border-radius: 8px;
+      overflow-x: auto;
+      max-height: 600px;
+    }
+    .article {
+      border: 2px solid #ddd;
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 8px;
+    }
+    .score {
+      display: inline-block;
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-weight: bold;
+      margin: 5px;
+    }
+    .low { background: #d1fae5; color: #065f46; }
+    .medium { background: #fef3c7; color: #92400e; }
+    .high { background: #fee2e2; color: #991b1b; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 Debug Bias Detection Data</h1>
+    <p>This tool shows you exactly what's in your database and helps diagnose the zero bias issue.</p>
+
+    <button onclick="checkDatabase()">Check Database Data</button>
+    <button onclick="testAnalysis()">Test One Analysis</button>
+    <button onclick="reanalyzeAll()">Reanalyze All Articles</button>
+
+    <div id="output"></div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://eydnxgmxpzrhtdddcszx.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV5ZG54Z214cHpyaHRkZGRjc3p4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Mjc4Nzk5NzgsImV4cCI6MjA0MzQ1NTk3OH0.gEB-HKhJLXmQJ3DzYD2nwRf_NieMQlSDpwZmAjYBSv8';
+
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    async function checkDatabase() {
+      const output = document.getElementById('output');
+      output.innerHTML = '<h3>⏳ Checking database...</h3>';
+
+      try {
+        // Get articles with analysis
+        const { data: items, error } = await supabase
+          .from('feedback_items')
+          .select(`
+            id,
+            title,
+            content,
+            status,
+            media_sources (name),
+            ai_analyses (
+              sentiment_label,
+              bias_indicators
+            )
+          `)
+          .order('collected_at', { ascending: false })
+          .limit(5);
+
+        if (error) throw error;
+
+        let html = '<h3>✅ Database Results (First 5 Articles)</h3>';
+
+        items.forEach((item, index) => {
+          const analysis = item.ai_analyses?.[0];
+          const bias = analysis?.bias_indicators;
+
+          html += `
+            <div class="article">
+              <h4>${index + 1}. ${item.title}</h4>
+              <p><strong>Status:</strong> ${item.status}</p>
+              <p><strong>Source:</strong> ${item.media_sources?.name || 'Unknown'}</p>
+
+              ${analysis ? `
+                <p><strong>Sentiment:</strong> ${analysis.sentiment_label}</p>
+
+                ${bias ? `
+                  <h5>📊 Bias Indicators (Raw Data)</h5>
+                  <div>
+                    <span class="score ${getBiasClass(bias.overall_score)}">
+                      Overall: ${bias.overall_score || 0}
+                    </span>
+                    <span class="score">Political: ${bias.political_bias || 0}</span>
+                    <span class="score">Regional: ${bias.regional_bias || 0}</span>
+                    <span class="score">Sentiment: ${bias.sentiment_bias || 0}</span>
+                    <span class="score">Source: ${bias.source_reliability_bias || 0}</span>
+                    <span class="score">Representation: ${bias.representation_bias || 0}</span>
+                    <span class="score">Language: ${bias.language_bias || 0}</span>
+                  </div>
+
+                  <h5>🔍 Detailed Analysis:</h5>
+                  <pre>${JSON.stringify(bias.detailed_analysis, null, 2)}</pre>
+                ` : '<p style="color: red;">❌ No bias_indicators found!</p>'}
+              ` : '<p style="color: red;">❌ No analysis found!</p>'}
+            </div>
+          `;
+        });
+
+        // Statistics
+        const { count } = await supabase
+          .from('feedback_items')
+          .select('*', { count: 'exact', head: true });
+
+        const { count: analyzedCount } = await supabase
+          .from('ai_analyses')
+          .select('*', { count: 'exact', head: true });
+
+        html += `
+          <div style="background: #f0f9ff; padding: 20px; border-radius: 8px; margin-top: 20px;">
+            <h3>📈 Statistics</h3>
+            <p><strong>Total Articles:</strong> ${count}</p>
+            <p><strong>Analyzed Articles:</strong> ${analyzedCount}</p>
+            <p><strong>Pending Analysis:</strong> ${count - analyzedCount}</p>
+          </div>
+        `;
+
+        output.innerHTML = html;
+
+      } catch (error) {
+        output.innerHTML = `<div style="color: red;"><h3>❌ Error</h3><pre>${error.message}</pre></div>`;
+      }
+    }
+
+    function getBiasClass(score) {
+      if (!score || score < 35) return 'low';
+      if (score < 65) return 'medium';
+      return 'high';
+    }
+
+    async function testAnalysis() {
+      const output = document.getElementById('output');
+      output.innerHTML = '<h3>⏳ Testing analysis on sample article...</h3>';
+
+      try {
+        // Get one article
+        const { data: articles } = await supabase
+          .from('feedback_items')
+          .select('id, title, content')
+          .limit(1)
+          .single();
+
+        if (!articles) {
+          output.innerHTML = '<p style="color: red;">No articles found in database!</p>';
+          return;
+        }
+
+        // Analyze it
+        const response = await fetch(`${SUPABASE_URL}/functions/v1/detect-bias`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: articles.title,
+            content: articles.content || articles.title,
+            feedbackId: articles.id
+          })
+        });
+
+        const result = await response.json();
+
+        let html = '<h3>✅ Test Analysis Complete</h3>';
+        html += `<h4>Article: ${articles.title}</h4>`;
+
+        if (result.success) {
+          const analysis = result.analysis;
+          html += `
+            <div class="article">
+              <h4>📊 Analysis Results</h4>
+              <div>
+                <span class="score ${getBiasClass(analysis.overall_score)}">
+                  Overall: ${analysis.overall_score}
+                </span>
+              </div>
+              <div style="margin-top: 15px;">
+                <span class="score">Political: ${analysis.political_bias.score}</span>
+                <span class="score">Regional: ${analysis.regional_bias.score}</span>
+                <span class="score">Sentiment: ${analysis.sentiment_bias.score}</span>
+                <span class="score">Source: ${analysis.source_reliability_bias.score}</span>
+                <span class="score">Representation: ${analysis.representation_bias.score}</span>
+                <span class="score">Language: ${analysis.language_bias.score}</span>
+              </div>
+
+              <h5>Evidence:</h5>
+              <p><strong>Political:</strong> ${analysis.political_bias.evidence.join('; ') || 'None'}</p>
+              <p><strong>Sentiment:</strong> ${analysis.sentiment_bias.evidence.join('; ') || 'None'}</p>
+              <p><strong>Language:</strong> ${analysis.language_bias.evidence.join('; ') || 'None'}</p>
+            </div>
+          `;
+        } else {
+          html += `<p style="color: red;">❌ Error: ${result.error}</p>`;
+        }
+
+        output.innerHTML = html;
+
+      } catch (error) {
+        output.innerHTML = `<div style="color: red;"><h3>❌ Error</h3><pre>${error.message}</pre></div>`;
+      }
+    }
+
+    async function reanalyzeAll() {
+      if (!confirm('This will reanalyze all articles. Continue?')) return;
+
+      const output = document.getElementById('output');
+      output.innerHTML = '<h3>⏳ Starting reanalysis...</h3>';
+
+      try {
+        // First, reset status
+        await supabase
+          .from('feedback_items')
+          .update({ status: 'processing' })
+          .neq('status', 'processing');
+
+        // Get articles to analyze
+        const { data: articles } = await supabase
+          .from('feedback_items')
+          .select('id, title, content')
+          .eq('status', 'processing')
+          .limit(50);
+
+        let html = '<h3>📊 Reanalysis Progress</h3>';
+        let processed = 0;
+        let errors = 0;
+
+        for (const article of articles) {
+          try {
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/detect-bias`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                title: article.title,
+                content: article.content || article.title,
+                feedbackId: article.id
+              })
+            });
+
+            if (response.ok) {
+              processed++;
+              html = `<h3>📊 Reanalysis Progress</h3><p>✅ Processed: ${processed}/${articles.length}</p>`;
+              output.innerHTML = html;
+            } else {
+              errors++;
+            }
+          } catch (err) {
+            errors++;
+          }
+        }
+
+        html += `
+          <div class="article">
+            <h4>✅ Reanalysis Complete!</h4>
+            <p><strong>Processed:</strong> ${processed}</p>
+            <p><strong>Errors:</strong> ${errors}</p>
+            <p><strong>Next:</strong> Refresh your Bias Detection page to see updated scores!</p>
+          </div>
+        `;
+
+        output.innerHTML = html;
+
+      } catch (error) {
+        output.innerHTML = `<div style="color: red;"><h3>❌ Error</h3><pre>${error.message}</pre></div>`;
+      }
+    }
+  </script>
+</body>
+</html>

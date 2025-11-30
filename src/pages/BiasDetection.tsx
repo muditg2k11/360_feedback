@@ -118,12 +118,12 @@ export default function BiasDetection() {
             classification: biasIndicators.classification || 'Unknown',
             sentiment_label: item.ai_analyses?.[0]?.sentiment_label || 'neutral',
             sentiment_score: item.ai_analyses?.[0]?.sentiment_score || 0,
-            political_bias: (biasIndicators.political_bias || 0) * 100,
-            regional_bias: (biasIndicators.regional_bias || 0) * 100,
-            sentiment_bias: (biasIndicators.sentiment_bias || 0) * 100,
-            source_reliability_bias: (biasIndicators.source_reliability_bias || 0) * 100,
-            representation_bias: (biasIndicators.representation_bias || 0) * 100,
-            language_bias: (biasIndicators.language_bias || 0) * 100,
+            political_bias: biasIndicators.political_bias || 0,
+            regional_bias: biasIndicators.regional_bias || 0,
+            sentiment_bias: biasIndicators.sentiment_bias || 0,
+            source_reliability_bias: biasIndicators.source_reliability_bias || 0,
+            representation_bias: biasIndicators.representation_bias || 0,
+            language_bias: biasIndicators.language_bias || 0,
             detailed_analysis: biasIndicators.detailed_analysis || {}
           }
         };
