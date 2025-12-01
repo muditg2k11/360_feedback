@@ -215,15 +215,34 @@ export default function FeedbackCollection() {
   const handleAnalyzePending = async () => {
     setIsAnalyzingPending(true);
     setAnalyzeMessage('Analyzing pending articles with AI...');
+
+    let totalAnalyzed = 0;
+    let batchCount = 0;
+
     try {
-      const result = await scrapingService.analyzePending();
-      if (result.success) {
-        setAnalyzeMessage(`✓ Analyzed ${result.analyzed} articles successfully!`);
+      while (batchCount < 10) {
+        const result = await scrapingService.analyzePending();
+
+        if (result.success && result.analyzed > 0) {
+          totalAnalyzed += result.analyzed;
+          batchCount++;
+          setAnalyzeMessage(`Analyzing... ${totalAnalyzed} completed (batch ${batchCount})`);
+
+          if (result.analyzed < 20) {
+            break;
+          }
+        } else {
+          break;
+        }
+      }
+
+      if (totalAnalyzed > 0) {
+        setAnalyzeMessage(`✓ Analyzed ${totalAnalyzed} articles successfully!`);
         await loadFeedbackItems();
         setTimeout(() => setAnalyzeMessage(''), 5000);
       } else {
-        setAnalyzeMessage(`✗ Analysis failed: ${result.error || 'Unknown error'}`);
-        setTimeout(() => setAnalyzeMessage(''), 5000);
+        setAnalyzeMessage('No pending articles to analyze');
+        setTimeout(() => setAnalyzeMessage(''), 3000);
       }
     } catch (error) {
       console.error('Error analyzing pending:', error);

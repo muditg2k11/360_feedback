@@ -20,14 +20,16 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    console.log('Starting analysis of pending articles...');
+    const { batchSize = 20 } = await req.json().catch(() => ({ batchSize: 20 }));
+    const maxBatchSize = Math.min(batchSize, 20);
 
-    // Get all articles in processing state without analysis
+    console.log(`Starting analysis of pending articles (batch size: ${maxBatchSize})...`);
+
     const { data: pendingArticles, error: fetchError } = await supabase
       .from('feedback_items')
       .select('id, title, content')
       .eq('status', 'processing')
-      .limit(100);
+      .limit(maxBatchSize);
 
     if (fetchError) {
       throw new Error(`Error fetching pending articles: ${fetchError.message}`);
@@ -52,8 +54,7 @@ Deno.serve(async (req: Request) => {
     let analyzedCount = 0;
     let failedCount = 0;
 
-    // Analyze each article
-    for (const article of pendingArticles) {
+    const analyzePromises = pendingArticles.map(async (article) => {
       try {
         const detectBiasUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/detect-bias`;
         const response = await fetch(detectBiasUrl, {
@@ -67,23 +68,31 @@ Deno.serve(async (req: Request) => {
             content: article.content,
             feedbackId: article.id,
           }),
+          signal: AbortSignal.timeout(15000),
         });
 
         if (response.ok) {
-          analyzedCount++;
-          console.log(`✓ Analyzed (${analyzedCount}/${pendingArticles.length}): ${article.title.substring(0, 50)}...`);
+          console.log(`✓ Analyzed: ${article.title.substring(0, 50)}...`);
+          return { success: true };
         } else {
-          failedCount++;
           console.error(`✗ Failed to analyze: ${article.title.substring(0, 50)}...`);
+          return { success: false };
         }
       } catch (analyzeError) {
-        failedCount++;
-        console.error('Error analyzing article:', analyzeError);
+        console.error('Error analyzing article:', article.title.substring(0, 50), analyzeError);
+        return { success: false };
       }
+    });
 
-      // Add small delay to avoid overwhelming the system
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
+    const results = await Promise.allSettled(analyzePromises);
+
+    results.forEach(result => {
+      if (result.status === 'fulfilled' && result.value.success) {
+        analyzedCount++;
+      } else {
+        failedCount++;
+      }
+    });
 
     return new Response(
       JSON.stringify({
