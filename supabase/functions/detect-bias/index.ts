@@ -41,8 +41,8 @@ Deno.serve(async (req) => {
     ) / 6;
 
     let classification = 'Low Bias';
-    if (overallScore >= 60) classification = 'High Bias';
-    else if (overallScore >= 30) classification = 'Medium Bias';
+    if (overallScore >= 50) classification = 'High Bias';
+    else if (overallScore >= 25) classification = 'Medium Bias';
 
     const sentimentAnalysis = {
       score: 0,
@@ -138,27 +138,29 @@ function analyzePoliticalBias(text: string): BiasAnalysis {
   });
 
   const totalPartyMentions = Object.values(partyTerms).reduce((a, b) => a + b, 0);
-  if (totalPartyMentions > 3) {
-    score += Math.min(25, totalPartyMentions * 3);
-    evidence.push(`Frequent political entity mentions (${totalPartyMentions} times)`);
+  if (totalPartyMentions > 0) {
+    score += Math.min(40, totalPartyMentions * 8);
+    if (totalPartyMentions > 2) {
+      evidence.push(`Heavy political focus (${totalPartyMentions} political entity mentions)`);
+    }
   }
 
   // Loaded/biased political language
-  const highBiasTerms = ['alleged', 'claims without evidence', 'propaganda', 'regime', 'puppet'];
-  const moderateBiasTerms = ['controversial', 'criticized', 'praised', 'slammed', 'blasted', 'defended', 'attacked'];
+  const highBiasTerms = ['alleged', 'claims without evidence', 'propaganda', 'regime', 'puppet', 'vendetta', 'bogus', 'loot'];
+  const moderateBiasTerms = ['controversial', 'criticized', 'praised', 'slammed', 'blasted', 'defended', 'attacked', 'accused'];
 
   highBiasTerms.forEach(term => {
     if (textLower.includes(term)) {
-      score += 15;
-      evidence.push(`Uses politically loaded term '${term}'`);
+      score += 20;
+      evidence.push(`Politically loaded term: '${term}'`);
     }
   });
 
   moderateBiasTerms.forEach(term => {
     const count = (textLower.match(new RegExp(`\\b${term}\\b`, 'g')) || []).length;
     if (count > 0) {
-      score += count * 5;
-      if (count >= 2) evidence.push(`Charged term '${term}' used ${count} times`);
+      score += count * 10;
+      if (count >= 1) evidence.push(`Charged language: '${term}' (${count}x)`);
     }
   });
 
@@ -196,19 +198,19 @@ function analyzeRegionalBias(text: string): BiasAnalysis {
   const mentionedRegions = Object.entries(regions).filter(([_, count]) => count > 0);
   const totalMentions = mentionedRegions.reduce((sum, [_, count]) => sum + count, 0);
 
-  if (mentionedRegions.length === 1 && totalMentions > 2) {
-    score += Math.min(40, totalMentions * 8);
-    evidence.push(`Heavy focus on ${mentionedRegions[0][0]} (${totalMentions} mentions)`);
+  if (mentionedRegions.length === 1 && totalMentions >= 2) {
+    score += Math.min(50, totalMentions * 12);
+    evidence.push(`Strong regional focus on ${mentionedRegions[0][0]} (${totalMentions} mentions)`);
   } else if (mentionedRegions.length > 0) {
-    score += Math.min(20, mentionedRegions.length * 4);
-    if (totalMentions > 4) {
-      evidence.push(`Multiple regional focuses: ${mentionedRegions.map(([r]) => r).join(', ')}`);
+    score += Math.min(30, mentionedRegions.length * 8);
+    if (totalMentions >= 2) {
+      evidence.push(`Regional focuses: ${mentionedRegions.map(([r]) => r).join(', ')}`);
     }
   }
 
   regionalDescriptors.forEach(descriptor => {
     if (textLower.includes(descriptor)) {
-      score += 10;
+      score += 15;
       evidence.push(`Regional framing: '${descriptor}'`);
     }
   });
@@ -244,7 +246,7 @@ function analyzeSentimentBias(text: string): BiasAnalysis {
   extremeNegative.forEach(term => {
     const count = (textLower.match(new RegExp(`\\b${term}\\b`, 'g')) || []).length;
     if (count > 0) {
-      score += count * 12;
+      score += count * 18;
       negativeCount += count;
       evidence.push(`Extreme negative: '${term}' (${count}x)`);
     }
@@ -253,7 +255,7 @@ function analyzeSentimentBias(text: string): BiasAnalysis {
   extremePositive.forEach(term => {
     const count = (textLower.match(new RegExp(`\\b${term}\\b`, 'g')) || []).length;
     if (count > 0) {
-      score += count * 12;
+      score += count * 18;
       positiveCount += count;
       evidence.push(`Extreme positive: '${term}' (${count}x)`);
     }
@@ -262,7 +264,7 @@ function analyzeSentimentBias(text: string): BiasAnalysis {
   strongNegative.forEach(term => {
     const count = (textLower.match(new RegExp(`\\b${term}\\b`, 'g')) || []).length;
     if (count > 0) {
-      score += count * 6;
+      score += count * 10;
       negativeCount += count;
     }
   });
@@ -270,15 +272,15 @@ function analyzeSentimentBias(text: string): BiasAnalysis {
   strongPositive.forEach(term => {
     const count = (textLower.match(new RegExp(`\\b${term}\\b`, 'g')) || []).length;
     if (count > 0) {
-      score += count * 6;
+      score += count * 10;
       positiveCount += count;
     }
   });
 
   const sentimentImbalance = Math.abs(negativeCount - positiveCount);
-  if (sentimentImbalance > 3) {
-    score += sentimentImbalance * 3;
-    evidence.push(`One-sided sentiment (${negativeCount} negative vs ${positiveCount} positive)`);
+  if (sentimentImbalance >= 2) {
+    score += sentimentImbalance * 8;
+    evidence.push(`Sentiment imbalance: ${negativeCount} negative vs ${positiveCount} positive`);
   }
 
   score = Math.min(100, score);
@@ -307,7 +309,7 @@ function analyzeSourceReliability(text: string): BiasAnalysis {
 
   weakSources.forEach(term => {
     if (textLower.includes(term)) {
-      score += 15;
+      score += 20;
       weakCount++;
       evidence.push(`Weak sourcing: '${term}'`);
     }
@@ -316,14 +318,13 @@ function analyzeSourceReliability(text: string): BiasAnalysis {
   strongSources.forEach(term => {
     if (textLower.includes(term)) {
       strongCount++;
-      score -= 10; // Reduce score for good sourcing
+      score -= 5;
     }
   });
 
-  // Lack of any source attribution
   if (!textLower.includes('according') && !textLower.includes('said') && !textLower.includes('stated')) {
-    score += 8;
-    evidence.push('Limited source attribution');
+    score += 15;
+    evidence.push('No clear source attribution');
   }
 
   score = Math.max(0, Math.min(100, score));
@@ -357,25 +358,26 @@ function analyzeRepresentation(text: string): BiasAnalysis {
     }
   });
 
-  // Short articles get baseline score
   if (wordCount < 100) {
-    score = 20;
+    score = 30;
   } else if (perspectiveCount === 0) {
-    score = 45;
-    evidence.push('No contrasting perspectives presented');
+    score = 60;
+    evidence.push('Single perspective - no contrasting views');
   } else if (perspectiveCount === 1) {
-    score = 25;
+    score = 40;
     evidence.push('Limited perspective diversity');
+  } else if (perspectiveCount === 2) {
+    score = 25;
+    evidence.push('Some perspective diversity');
   } else {
     score = 10;
     evidence.push(`Multiple viewpoints presented (${perspectiveCount} indicators)`);
   }
 
-  // Check for direct quotes
   const quoteCount = (text.match(/["'"]/g) || []).length / 2;
   if (quoteCount < 2 && wordCount > 150) {
-    score += 10;
-    evidence.push('Few direct quotes or voices');
+    score += 15;
+    evidence.push('Limited direct quotes from sources');
   }
 
   score = Math.min(100, score);
@@ -402,28 +404,27 @@ function analyzeLanguageBias(text: string): BiasAnalysis {
   sensationalTerms.forEach(term => {
     const count = (textLower.match(new RegExp(`\\b${term}\\b`, 'g')) || []).length;
     if (count > 0) {
-      score += count * 10;
+      score += count * 15;
       evidence.push(`Sensational: '${term}' (${count}x)`);
     }
   });
 
   clickbaitPhrases.forEach(phrase => {
     if (textLower.includes(phrase)) {
-      score += 25;
+      score += 35;
       evidence.push(`Clickbait phrase: '${phrase}'`);
     }
   });
 
-  // Excessive capitalization or exclamation
   const capsWords = (text.match(/\b[A-Z]{4,}\b/g) || []).length;
   if (capsWords > 0) {
-    score += capsWords * 8;
+    score += capsWords * 12;
     evidence.push(`${capsWords} words in ALL CAPS`);
   }
 
   const exclamations = (text.match(/!/g) || []).length;
   if (exclamations > 2) {
-    score += exclamations * 5;
+    score += exclamations * 8;
     evidence.push(`Excessive exclamation marks (${exclamations})`);
   }
 
