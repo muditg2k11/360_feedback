@@ -113,6 +113,43 @@ export const scrapingService = {
     }
   },
 
+  async analyzePending(): Promise<{ success: boolean; analyzed: number; failed: number; total: number; error?: string }> {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      console.log('Calling analyze-pending edge function...');
+
+      const response = await fetch(`${FUNCTIONS_URL}/analyze-pending`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({}),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Analysis failed:', response.status, errorText);
+        throw new Error(`Analysis failed: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('Analysis result:', result);
+      return result;
+    } catch (error) {
+      console.error('Error analyzing pending:', error);
+      return {
+        success: false,
+        analyzed: 0,
+        failed: 0,
+        total: 0,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      };
+    }
+  },
+
   async analyzeSentiment(feedbackId: string, content: string, language: string): Promise<AnalysisResult> {
     try {
       const mockUser = localStorage.getItem('mockAuthUser');

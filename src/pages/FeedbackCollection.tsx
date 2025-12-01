@@ -27,6 +27,8 @@ export default function FeedbackCollection() {
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isAnalyzingPending, setIsAnalyzingPending] = useState(false);
+  const [analyzeMessage, setAnalyzeMessage] = useState<string>('');
 
   useEffect(() => {
     loadData();
@@ -193,6 +195,10 @@ export default function FeedbackCollection() {
         setScrapeMessage(`✓ Successfully collected ${totalArticles} new articles!`);
         await loadFeedbackItems();
         setTimeout(() => setScrapeMessage(''), 5000);
+
+        if (totalArticles > 0) {
+          setTimeout(() => handleAnalyzePending(), 1000);
+        }
       } else {
         setScrapeMessage(`✗ Scraping failed: ${result.error || 'Unknown error'}`);
         setTimeout(() => setScrapeMessage(''), 5000);
@@ -203,6 +209,28 @@ export default function FeedbackCollection() {
       setTimeout(() => setScrapeMessage(''), 5000);
     } finally {
       setIsScraping(false);
+    }
+  };
+
+  const handleAnalyzePending = async () => {
+    setIsAnalyzingPending(true);
+    setAnalyzeMessage('Analyzing pending articles with AI...');
+    try {
+      const result = await scrapingService.analyzePending();
+      if (result.success) {
+        setAnalyzeMessage(`✓ Analyzed ${result.analyzed} articles successfully!`);
+        await loadFeedbackItems();
+        setTimeout(() => setAnalyzeMessage(''), 5000);
+      } else {
+        setAnalyzeMessage(`✗ Analysis failed: ${result.error || 'Unknown error'}`);
+        setTimeout(() => setAnalyzeMessage(''), 5000);
+      }
+    } catch (error) {
+      console.error('Error analyzing pending:', error);
+      setAnalyzeMessage(`✗ Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      setTimeout(() => setAnalyzeMessage(''), 5000);
+    } finally {
+      setIsAnalyzingPending(false);
     }
   };
 
@@ -323,6 +351,14 @@ export default function FeedbackCollection() {
                 {summaryMessage}
               </p>
             )}
+            {analyzeMessage && (
+              <p className={`text-sm mt-1 font-medium ${
+                analyzeMessage.startsWith('✓') ? 'text-green-600' :
+                analyzeMessage.startsWith('✗') ? 'text-red-600' : 'text-blue-600'
+              }`}>
+                {analyzeMessage}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex items-center space-x-3 flex-wrap gap-2">
@@ -349,6 +385,14 @@ export default function FeedbackCollection() {
           >
             <Sparkles className={`w-5 h-5 ${isGeneratingSummaries ? 'animate-pulse' : ''}`} />
             <span>{isGeneratingSummaries ? 'Generating...' : 'Generate AI Summaries'}</span>
+          </button>
+          <button
+            onClick={handleAnalyzePending}
+            disabled={isAnalyzingPending}
+            className="flex items-center space-x-2 px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Brain className={`w-5 h-5 ${isAnalyzingPending ? 'animate-pulse' : ''}`} />
+            <span>{isAnalyzingPending ? 'Analyzing...' : 'Analyze Pending'}</span>
           </button>
           <button
             onClick={handleScrapeNow}
