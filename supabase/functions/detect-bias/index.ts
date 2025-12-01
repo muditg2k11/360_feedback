@@ -360,7 +360,6 @@ function analyzeRepresentation(text: string): BiasAnalysis {
   // Short articles get baseline score
   if (wordCount < 100) {
     score = 20;
-    explanation = 'Article too brief for perspective analysis';
   } else if (perspectiveCount === 0) {
     score = 45;
     evidence.push('No contrasting perspectives presented');
@@ -381,7 +380,7 @@ function analyzeRepresentation(text: string): BiasAnalysis {
 
   score = Math.min(100, score);
 
-  let explanation = score > 40
+  const explanation = score > 40
     ? 'Limited representation of diverse viewpoints'
     : score > 20
     ? 'Some perspective diversity'
