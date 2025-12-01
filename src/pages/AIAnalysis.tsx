@@ -204,7 +204,9 @@ export default function AIAnalysisPage() {
                       Bias Indicators
                     </h3>
                     <div className="space-y-3">
-                      {Object.entries(analysis.bias_indicators).map(([key, value]) => {
+                      {Object.entries(analysis.bias_indicators)
+                        .filter(([key]) => !['overall_score', 'classification', 'detailed_analysis'].includes(key))
+                        .map(([key, value]) => {
                         const numValue = value as number;
                         const label = key
                           .split('_')
@@ -215,19 +217,19 @@ export default function AIAnalysisPage() {
                             <div className="flex items-center justify-between text-sm mb-2">
                               <span className="text-gray-600">{label}</span>
                               <span className="font-medium text-gray-900">
-                                {(numValue * 100).toFixed(0)}%
+                                {numValue}/100
                               </span>
                             </div>
                             <div className="w-full bg-gray-200 rounded-full h-2">
                               <div
                                 className={`h-2 rounded-full ${
-                                  numValue > 0.5
+                                  numValue > 50
                                     ? 'bg-red-500'
-                                    : numValue > 0.3
+                                    : numValue > 25
                                     ? 'bg-orange-500'
                                     : 'bg-green-500'
                                 }`}
-                                style={{ width: `${numValue * 100}%` }}
+                                style={{ width: `${Math.min(100, numValue)}%` }}
                               />
                             </div>
                           </div>

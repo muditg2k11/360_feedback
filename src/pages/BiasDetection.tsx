@@ -277,23 +277,77 @@ export default function BiasDetection() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 pt-3 border-t border-gray-100">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pt-3 border-t border-gray-100">
                   <div>
-                    <p className="text-xs text-gray-500 mb-1">Regional Bias</p>
+                    <p className="text-xs text-gray-500 mb-1">Political</p>
                     <p className="text-sm font-medium text-gray-900">
-                      {((analysis.bias_indicators as any).regional_bias * 100).toFixed(0)}%
+                      {((analysis.bias_indicators as any).political_bias || 0)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 mb-1">Political Bias</p>
+                    <p className="text-xs text-gray-500 mb-1">Regional</p>
                     <p className="text-sm font-medium text-gray-900">
-                      {((analysis.bias_indicators as any).political_bias * 100).toFixed(0)}%
+                      {((analysis.bias_indicators as any).regional_bias || 0)}
                     </p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-500 mb-1">Source Reliability</p>
+                    <p className="text-xs text-gray-500 mb-1">Sentiment</p>
                     <p className="text-sm font-medium text-gray-900">
-                      {((analysis.bias_indicators as any).source_reliability * 100).toFixed(0)}%
+                      {((analysis.bias_indicators as any).sentiment_bias || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Source</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {((analysis.bias_indicators as any).source_reliability_bias || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Representation</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {((analysis.bias_indicators as any).representation_bias || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Language</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {((analysis.bias_indicators as any).language_bias || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Factual</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {((analysis.bias_indicators as any).factual_accuracy_bias || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Headline</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {((analysis.bias_indicators as any).headline_content_bias || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Attribution</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {((analysis.bias_indicators as any).attribution_bias || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Temporal</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {((analysis.bias_indicators as any).temporal_bias || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Omission</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {((analysis.bias_indicators as any).omission_bias || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-500 mb-1">Framing</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {((analysis.bias_indicators as any).framing_bias || 0)}
                     </p>
                   </div>
                 </div>
