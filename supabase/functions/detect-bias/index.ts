@@ -31,14 +31,28 @@ Deno.serve(async (req) => {
     const representationBias = analyzeRepresentation(fullText);
     const languageBias = analyzeLanguageBias(fullText);
 
+    // New 6 dimensions
+    const factualAccuracyBias = analyzeFactualAccuracy(fullText);
+    const headlineContentBias = analyzeHeadlineContentMatch(title, content);
+    const attributionBias = analyzeAttributionBias(fullText);
+    const temporalBias = analyzeTemporalBias(fullText);
+    const omissionBias = analyzeOmissionBias(fullText);
+    const framingBias = analyzeFramingBias(fullText);
+
     const overallScore = (
       politicalBias.score +
       regionalBias.score +
       sentimentBias.score +
       sourceReliabilityBias.score +
       representationBias.score +
-      languageBias.score
-    ) / 6;
+      languageBias.score +
+      factualAccuracyBias.score +
+      headlineContentBias.score +
+      attributionBias.score +
+      temporalBias.score +
+      omissionBias.score +
+      framingBias.score
+    ) / 12;
 
     let classification = 'Low Bias';
     if (overallScore >= 50) classification = 'High Bias';
@@ -70,6 +84,12 @@ Deno.serve(async (req) => {
           source_reliability_bias: sourceReliabilityBias.score,
           representation_bias: representationBias.score,
           language_bias: languageBias.score,
+          factual_accuracy_bias: factualAccuracyBias.score,
+          headline_content_bias: headlineContentBias.score,
+          attribution_bias: attributionBias.score,
+          temporal_bias: temporalBias.score,
+          omission_bias: omissionBias.score,
+          framing_bias: framingBias.score,
           overall_score: Math.round(overallScore),
           classification: classification,
           detailed_analysis: {
@@ -79,6 +99,12 @@ Deno.serve(async (req) => {
             source_reliability: sourceReliabilityBias,
             representation: representationBias,
             language: languageBias,
+            factual_accuracy: factualAccuracyBias,
+            headline_content: headlineContentBias,
+            attribution: attributionBias,
+            temporal: temporalBias,
+            omission: omissionBias,
+            framing: framingBias,
           },
         },
       }, { onConflict: 'feedback_id' });
@@ -107,6 +133,12 @@ Deno.serve(async (req) => {
           source_reliability_bias: sourceReliabilityBias,
           representation_bias: representationBias,
           language_bias: languageBias,
+          factual_accuracy_bias: factualAccuracyBias,
+          headline_content_bias: headlineContentBias,
+          attribution_bias: attributionBias,
+          temporal_bias: temporalBias,
+          omission_bias: omissionBias,
+          framing_bias: framingBias,
         },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -450,4 +482,380 @@ function detectLanguage(text: string): string {
   if (teluguPattern.test(text)) return 'Telugu';
   if (kannadaPattern.test(text)) return 'Kannada';
   return 'English';
+}
+
+// New Dimension 1: Factual Accuracy Bias
+function analyzeFactualAccuracy(text: string): BiasAnalysis {
+  const evidence: string[] = [];
+  let score = 0;
+  const textLower = text.toLowerCase();
+
+  // Unverified claim indicators
+  const unverifiedPhrases = ['some say', 'many believe', 'it is said', 'rumors', 'speculation'];
+  const hedgingWords = ['possibly', 'perhaps', 'might', 'could be', 'may have'];
+  const absoluteWords = ['always', 'never', 'everyone', 'no one', 'all', 'none'];
+
+  unverifiedPhrases.forEach(phrase => {
+    if (textLower.includes(phrase)) {
+      score += 20;
+      evidence.push(`Unverified claim indicator: '${phrase}'`);
+    }
+  });
+
+  let hedgingCount = 0;
+  hedgingWords.forEach(word => {
+    const count = (textLower.match(new RegExp(`\\b${word}\\b`, 'g')) || []).length;
+    if (count > 0) {
+      hedgingCount += count;
+    }
+  });
+
+  if (hedgingCount > 3) {
+    score += hedgingCount * 5;
+    evidence.push(`Excessive hedging language (${hedgingCount} instances)`);
+  }
+
+  let absoluteCount = 0;
+  absoluteWords.forEach(word => {
+    const count = (textLower.match(new RegExp(`\\b${word}\\b`, 'g')) || []).length;
+    if (count > 0) {
+      absoluteCount += count;
+    }
+  });
+
+  if (absoluteCount > 2) {
+    score += absoluteCount * 8;
+    evidence.push(`Absolute statements without nuance (${absoluteCount} instances)`);
+  }
+
+  // Check for numbers without sources
+  const hasNumbers = /\d+/.test(text);
+  const hasSourceAttribution = textLower.includes('according to') || textLower.includes('data from') || textLower.includes('study');
+
+  if (hasNumbers && !hasSourceAttribution) {
+    score += 15;
+    evidence.push('Statistics presented without source attribution');
+  }
+
+  score = Math.min(100, score);
+
+  const explanation = score > 50
+    ? 'Significant concerns about factual verification'
+    : score > 25
+    ? 'Some unverified claims present'
+    : 'Reasonable factual grounding';
+
+  return { score, evidence, explanation };
+}
+
+// New Dimension 2: Headline-Content Mismatch
+function analyzeHeadlineContentMatch(title: string, content: string): BiasAnalysis {
+  const evidence: string[] = [];
+  let score = 0;
+
+  const titleLower = title.toLowerCase();
+  const contentLower = content.toLowerCase();
+
+  // Clickbait headline indicators
+  const clickbaitWords = ['shocking', 'unbelievable', 'you won\'t believe', 'mind-blowing', 'jaw-dropping'];
+
+  clickbaitWords.forEach(word => {
+    if (titleLower.includes(word)) {
+      score += 25;
+      evidence.push(`Clickbait headline: '${word}'`);
+    }
+  });
+
+  // Question headlines without answers
+  if (titleLower.includes('?') && content.length < 200) {
+    score += 20;
+    evidence.push('Question headline with insufficient content');
+  }
+
+  // Extract key entities from headline
+  const titleWords = title.split(/\s+/).filter(w => w.length > 4);
+  let matchCount = 0;
+  titleWords.forEach(word => {
+    if (contentLower.includes(word.toLowerCase())) {
+      matchCount++;
+    }
+  });
+
+  const matchRatio = titleWords.length > 0 ? matchCount / titleWords.length : 1;
+  if (matchRatio < 0.5 && titleWords.length > 3) {
+    score += 30;
+    evidence.push('Headline keywords poorly represented in content');
+  }
+
+  // Emotional mismatch
+  const emotionalHeadline = /!|shocking|outrage|scandal|crisis/.test(titleLower);
+  const neutralContent = !/!/.test(content) && content.length > 100;
+
+  if (emotionalHeadline && neutralContent) {
+    score += 15;
+    evidence.push('Emotional headline with neutral content');
+  }
+
+  score = Math.min(100, score);
+
+  const explanation = score > 50
+    ? 'Headline significantly misrepresents content'
+    : score > 25
+    ? 'Some headline-content inconsistency'
+    : 'Headline accurately reflects content';
+
+  return { score, evidence, explanation };
+}
+
+// New Dimension 3: Attribution Bias
+function analyzeAttributionBias(text: string): BiasAnalysis {
+  const evidence: string[] = [];
+  let score = 0;
+  const textLower = text.toLowerCase();
+
+  // Count different types of sources
+  const anonymousSources = (textLower.match(/sources say|officials say|insiders/g) || []).length;
+  const namedSources = (textLower.match(/\w+ \w+ said|\w+ stated/g) || []).length;
+
+  if (anonymousSources > namedSources && anonymousSources > 2) {
+    score += 30;
+    evidence.push(`Over-reliance on anonymous sources (${anonymousSources} vs ${namedSources} named)`);
+  }
+
+  // Single perspective dominance
+  const quotePattern = /["']([^"']{20,}?)["']/g;
+  const quotes = text.match(quotePattern) || [];
+
+  if (quotes.length === 0 && text.length > 200) {
+    score += 25;
+    evidence.push('No direct quotes - article lacks diverse voices');
+  } else if (quotes.length === 1) {
+    score += 15;
+    evidence.push('Single voice dominates the narrative');
+  }
+
+  // Check for counter-perspectives
+  const hasCounterView = textLower.includes('however') || textLower.includes('on the other hand') ||
+                         textLower.includes('critics') || textLower.includes('opponents');
+
+  if (!hasCounterView && text.length > 300) {
+    score += 20;
+    evidence.push('Missing opposing viewpoints or criticism');
+  }
+
+  score = Math.min(100, score);
+
+  const explanation = score > 50
+    ? 'Heavy attribution bias toward one perspective'
+    : score > 25
+    ? 'Limited diversity in sources cited'
+    : 'Balanced source attribution';
+
+  return { score, evidence, explanation };
+}
+
+// New Dimension 4: Temporal Bias
+function analyzeTemporalBias(text: string): BiasAnalysis {
+  const evidence: string[] = [];
+  let score = 0;
+  const textLower = text.toLowerCase();
+
+  // Cherry-picked timeframes
+  const selectiveTimeframes = ['in recent months', 'this year', 'recently', 'lately', 'of late'];
+  const specificDates = /\d{4}|\d{1,2}\/\d{1,2}|\w+ \d{1,2}/.test(text);
+
+  let vagueTimeCount = 0;
+  selectiveTimeframes.forEach(phrase => {
+    if (textLower.includes(phrase)) {
+      vagueTimeCount++;
+    }
+  });
+
+  if (vagueTimeCount > 2 && !specificDates) {
+    score += 30;
+    evidence.push('Vague timeframes without specific dates');
+  }
+
+  // Historical context missing
+  const comparativeTerms = ['compared to', 'previously', 'historically', 'in the past', 'traditionally'];
+  let hasContext = false;
+  comparativeTerms.forEach(term => {
+    if (textLower.includes(term)) hasContext = true;
+  });
+
+  if (!hasContext && text.length > 300) {
+    score += 25;
+    evidence.push('Lacks historical context or comparison');
+  }
+
+  // Recency bias
+  const recencyWords = ['unprecedented', 'first time', 'never before', 'historic'];
+  let recencyCount = 0;
+  recencyWords.forEach(word => {
+    if (textLower.includes(word)) {
+      recencyCount++;
+      score += 15;
+    }
+  });
+
+  if (recencyCount > 0) {
+    evidence.push(`Recency bias: ${recencyCount} instances of exceptional framing`);
+  }
+
+  score = Math.min(100, score);
+
+  const explanation = score > 50
+    ? 'Significant temporal framing concerns'
+    : score > 25
+    ? 'Some selective use of timeframes'
+    : 'Appropriate temporal context';
+
+  return { score, evidence, explanation };
+}
+
+// New Dimension 5: Omission Bias
+function analyzeOmissionBias(text: string): BiasAnalysis {
+  const evidence: string[] = [];
+  let score = 0;
+  const textLower = text.toLowerCase();
+  const wordCount = text.split(/\s+/).length;
+
+  // Article too short for complex topics
+  const complexTopicIndicators = ['policy', 'reform', 'legislation', 'scandal', 'crisis', 'conflict'];
+  let isComplexTopic = false;
+  complexTopicIndicators.forEach(indicator => {
+    if (textLower.includes(indicator)) isComplexTopic = true;
+  });
+
+  if (isComplexTopic && wordCount < 150) {
+    score += 35;
+    evidence.push('Complex topic with insufficient detail');
+  }
+
+  // Missing key context words
+  const contextWords = ['because', 'due to', 'caused by', 'reason', 'background', 'context'];
+  let hasContextExplanation = false;
+  contextWords.forEach(word => {
+    if (textLower.includes(word)) hasContextExplanation = true;
+  });
+
+  if (!hasContextExplanation && wordCount > 100) {
+    score += 25;
+    evidence.push('Missing causal explanation or background');
+  }
+
+  // One-sided without acknowledging complexity
+  const nuanceWords = ['complicated', 'complex', 'various factors', 'multiple', 'both'];
+  let hasNuance = false;
+  nuanceWords.forEach(word => {
+    if (textLower.includes(word)) hasNuance = true;
+  });
+
+  if (!hasNuance && isComplexTopic) {
+    score += 20;
+    evidence.push('Oversimplification of complex issue');
+  }
+
+  // Missing impact or consequences
+  const impactWords = ['impact', 'effect', 'consequence', 'result', 'outcome'];
+  let hasImpact = false;
+  impactWords.forEach(word => {
+    if (textLower.includes(word)) hasImpact = true;
+  });
+
+  if (!hasImpact && wordCount > 200) {
+    score += 15;
+    evidence.push('Missing discussion of impacts or consequences');
+  }
+
+  score = Math.min(100, score);
+
+  const explanation = score > 50
+    ? 'Significant omissions in coverage'
+    : score > 25
+    ? 'Some important context missing'
+    : 'Comprehensive coverage';
+
+  return { score, evidence, explanation };
+}
+
+// New Dimension 6: Framing Bias
+function analyzeFramingBias(text: string): BiasAnalysis {
+  const evidence: string[] = [];
+  let score = 0;
+  const textLower = text.toLowerCase();
+
+  // Victim/Perpetrator framing
+  const victimWords = ['victim', 'suffering', 'targeted', 'oppressed', 'affected'];
+  const perpetratorWords = ['accused', 'guilty', 'responsible', 'blamed', 'culprit'];
+
+  let victimCount = 0;
+  victimWords.forEach(word => {
+    const count = (textLower.match(new RegExp(`\\b${word}\\b`, 'g')) || []).length;
+    victimCount += count;
+  });
+
+  let perpetratorCount = 0;
+  perpetratorWords.forEach(word => {
+    const count = (textLower.match(new RegExp(`\\b${word}\\b`, 'g')) || []).length;
+    perpetratorCount += count;
+  });
+
+  const framingImbalance = Math.abs(victimCount - perpetratorCount);
+  if (framingImbalance > 3) {
+    score += framingImbalance * 8;
+    evidence.push(`One-sided framing: ${victimCount} victim vs ${perpetratorCount} perpetrator references`);
+  }
+
+  // Problem vs Solution framing
+  const problemWords = ['problem', 'issue', 'concern', 'threat', 'danger', 'risk'];
+  const solutionWords = ['solution', 'fix', 'resolve', 'address', 'tackle'];
+
+  let problemCount = 0;
+  problemWords.forEach(word => {
+    if (textLower.includes(word)) problemCount++;
+  });
+
+  let solutionCount = 0;
+  solutionWords.forEach(word => {
+    if (textLower.includes(word)) solutionCount++;
+  });
+
+  if (problemCount > 3 && solutionCount === 0) {
+    score += 25;
+    evidence.push('Problem-focused framing without solutions');
+  }
+
+  // Hero/Villain narrative
+  const heroWords = ['hero', 'champion', 'defender', 'savior', 'leader'];
+  const villainWords = ['villain', 'enemy', 'threat', 'danger', 'menace'];
+
+  let narrativeCount = 0;
+  [...heroWords, ...villainWords].forEach(word => {
+    if (textLower.includes(word)) narrativeCount++;
+  });
+
+  if (narrativeCount > 2) {
+    score += narrativeCount * 12;
+    evidence.push(`Narrative framing: ${narrativeCount} hero/villain terms`);
+  }
+
+  // Us vs Them framing
+  const divisiveWords = ['us vs them', 'our side', 'their side', 'enemy', 'ally'];
+  divisiveWords.forEach(word => {
+    if (textLower.includes(word)) {
+      score += 20;
+      evidence.push(`Divisive framing: '${word}'`);
+    }
+  });
+
+  score = Math.min(100, score);
+
+  const explanation = score > 50
+    ? 'Heavy use of biased framing'
+    : score > 25
+    ? 'Some framing bias present'
+    : 'Neutral framing';
+
+  return { score, evidence, explanation };
 }
