@@ -1,6 +1,6 @@
 export type UserRole = 'admin' | 'analyst' | 'government_official' | 'viewer';
 
-export type MediaType = 'newspaper' | 'tv' | 'radio' | 'social_media' | 'online' | 'magazine';
+export type MediaType = 'newspaper' | 'tv' | 'radio' | 'social_media' | 'online' | 'magazine' | 'youtube';
 
 export type SentimentLabel = 'positive' | 'negative' | 'neutral' | 'mixed';
 
@@ -35,6 +35,9 @@ export interface MediaSource {
   credibility_score: number;
   active: boolean;
   created_at: string;
+  youtube_channel_id?: string;
+  platform_type?: 'news' | 'youtube';
+  video_count?: number;
 }
 
 export interface FeedbackItem {
@@ -126,4 +129,36 @@ export interface DashboardStats {
   regionalDistribution: Array<{ region: string; count: number; sentiment: number }>;
   trendingTopics: Array<{ topic: string; count: number; sentiment: number }>;
   languageDistribution: Array<{ language: string; count: number }>;
+}
+
+export interface YouTubeVideo {
+  id: string;
+  video_id: string;
+  channel_id: string;
+  channel_name: string;
+  title: string;
+  description: string;
+  published_at: string;
+  view_count: number;
+  like_count: number;
+  comment_count: number;
+  thumbnail_url: string;
+  duration: string;
+  transcript?: string;
+  sentiment_score?: number;
+  sentiment_label?: SentimentLabel;
+  department_id?: string;
+  status: FeedbackStatus;
+  created_at: string;
+}
+
+export interface YouTubeComment {
+  id: string;
+  video_id: string;
+  comment_id: string;
+  author_name: string;
+  text: string;
+  like_count: number;
+  published_at: string;
+  created_at: string;
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { indianLanguages } from '../constants';
-import { Radio, Search, Filter, Plus, ExternalLink, ToggleLeft, ToggleRight, Star, Play, Loader } from 'lucide-react';
+import { Radio, Search, Filter, Plus, ExternalLink, ToggleLeft, ToggleRight, Star, Play, Loader, Youtube } from 'lucide-react';
 import { MediaSource } from '../types';
 import { dataService } from '../services/dataService';
 import { scrapingService } from '../services/scrapingService';
@@ -23,6 +23,8 @@ export default function MediaSources() {
     url: '',
     credibility_score: 0.7,
     active: true,
+    youtube_channel_id: '',
+    platform_type: 'news' as 'news' | 'youtube',
   });
 
   useEffect(() => {
@@ -61,16 +63,27 @@ export default function MediaSources() {
     setScrapingSourceId(sourceId);
     setScrapeMessage('');
 
-    try {
-      const result = await scrapingService.scrapeNews(sourceId);
+    const source = mediaSources.find(s => s.id === sourceId);
+    if (!source) return;
 
-      if (result.success && result.results) {
-        const sourceResult = result.results[0];
-        setScrapeMessage(
-          `Successfully scraped ${sourceResult.articlesSaved || 0} articles from ${sourceResult.sourceName}`
-        );
+    try {
+      if (source.platform_type === 'youtube' && source.youtube_channel_id) {
+        const result = await scrapingService.scrapeYouTube(source.youtube_channel_id);
+        if (result.success) {
+          setScrapeMessage(`Successfully scraped ${result.videos?.length || 0} videos`);
+        } else {
+          setScrapeMessage(`Error: ${result.error || 'YouTube scraping failed'}`);
+        }
       } else {
-        setScrapeMessage(`Error: ${result.error || 'Scraping failed'}`);
+        const result = await scrapingService.scrapeNews(sourceId);
+        if (result.success && result.results) {
+          const sourceResult = result.results[0];
+          setScrapeMessage(
+            `Successfully scraped ${sourceResult.articlesSaved || 0} articles from ${sourceResult.sourceName}`
+          );
+        } else {
+          setScrapeMessage(`Error: ${result.error || 'Scraping failed'}`);
+        }
       }
     } catch (error) {
       console.error('Error scraping source:', error);
@@ -129,6 +142,8 @@ export default function MediaSources() {
         url: '',
         credibility_score: 0.7,
         active: true,
+        youtube_channel_id: '',
+        platform_type: 'news',
       });
       await loadMediaSources();
     } catch (error: any) {
@@ -158,6 +173,8 @@ export default function MediaSources() {
         return 'bg-orange-100 text-orange-700 border-orange-200';
       case 'online':
         return 'bg-cyan-100 text-cyan-700 border-cyan-200';
+      case 'youtube':
+        return 'bg-red-100 text-red-700 border-red-200';
       default:
         return 'bg-gray-100 text-gray-700 border-gray-200';
     }
@@ -284,6 +301,7 @@ export default function MediaSources() {
               <option value="social_media">Social Media</option>
               <option value="online">Online</option>
               <option value="magazine">Magazine</option>
+              <option value="youtube">YouTube</option>
             </select>
           </div>
 
@@ -340,6 +358,12 @@ export default function MediaSources() {
                   <span className="px-2.5 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-medium">
                     {source.region}
                   </span>
+                  {source.platform_type === 'youtube' && (
+                    <span className="px-2.5 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium flex items-center space-x-1">
+                      <Youtube className="w-3 h-3" />
+                      <span>YouTube</span>
+                    </span>
+                  )}
                 </div>
               </div>
               <button className="p-2 rounded-lg hover:bg-gray-100 transition-colors">
@@ -447,6 +471,7 @@ export default function MediaSources() {
                     <option value="social_media">Social Media</option>
                     <option value="online">Online</option>
                     <option value="magazine">Magazine</option>
+                    <option value="youtube">YouTube</option>
                   </select>
                 </div>
 
@@ -480,14 +505,26 @@ export default function MediaSources() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Website URL</label>
-                <input
-                  type="url"
-                  value={newSource.url}
-                  onChange={(e) => setNewSource({ ...newSource, url: e.target.value })}
-                  placeholder="https://example.com"
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {newSource.type === 'youtube' ? 'YouTube Channel ID' : 'Website URL'}
+                </label>
+                {newSource.type === 'youtube' ? (
+                  <input
+                    type="text"
+                    value={newSource.youtube_channel_id}
+                    onChange={(e) => setNewSource({ ...newSource, youtube_channel_id: e.target.value, platform_type: 'youtube' })}
+                    placeholder="UC1234567890abcdefg"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                ) : (
+                  <input
+                    type="url"
+                    value={newSource.url}
+                    onChange={(e) => setNewSource({ ...newSource, url: e.target.value, platform_type: 'news' })}
+                    placeholder="https://example.com"
+                    className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                )}
               </div>
 
               <div>

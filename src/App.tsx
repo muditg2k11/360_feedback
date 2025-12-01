@@ -13,6 +13,7 @@ import MediaSources from './pages/MediaSources';
 import UserManagement from './pages/UserManagement';
 import { Departments } from './pages/Departments';
 import { Officers } from './pages/Officers';
+import YouTubeMonitoring from './pages/YouTubeMonitoring';
 
 function AppContent() {
   const { user, isLoading } = useAuth();
@@ -58,6 +59,8 @@ function AppContent() {
         return <Departments />;
       case 'officers':
         return <Officers />;
+      case 'youtube':
+        return <YouTubeMonitoring />;
       case 'users':
         return <UserManagement />;
       default:

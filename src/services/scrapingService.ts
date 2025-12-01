@@ -13,6 +13,7 @@ export interface ScrapeResult {
     status: string;
     error?: string;
   }>;
+  videos?: any[];
   error?: string;
 }
 
@@ -47,6 +48,37 @@ export interface InsightsResult {
 }
 
 export const scrapingService = {
+  async scrapeYouTube(channelId: string): Promise<ScrapeResult> {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      console.log('Calling scrape-youtube edge function...', { channelId });
+
+      const response = await fetch(`${FUNCTIONS_URL}/scrape-youtube`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json',
+          'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ channel_id: channelId }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('YouTube scraping failed:', response.status, errorText);
+        throw new Error(`YouTube scraping failed: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('YouTube scrape result:', result);
+      return result;
+    } catch (error) {
+      console.error('Error scraping YouTube:', error);
+      throw error;
+    }
+  },
+
   async scrapeNews(sourceId?: string): Promise<ScrapeResult> {
     try {
       const { data: { session } } = await supabase.auth.getSession();
