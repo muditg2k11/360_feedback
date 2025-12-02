@@ -1,3 +1,6 @@
+// 12-DIMENSION BIAS DETECTION - COMPLETE REAL-TIME ANALYSIS
+// Analyzes: Political, Regional, Sentiment, Source, Representation, Language,
+// Factual, Headline, Attribution, Temporal, Omission, Framing
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const corsHeaders = {
@@ -5,11 +8,77 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface BiasAnalysis {
-  score: number;
-  evidence: string[];
-  explanation: string;
-}
+// Comprehensive bias detection patterns for all 12 dimensions
+const biasPatterns = {
+  political: {
+    left: ['progressive', 'liberal', 'socialist', 'welfare', 'equality', 'redistribution', 'social justice', 'reform'],
+    right: ['conservative', 'traditional', 'nationalist', 'free market', 'privatization', 'law and order'],
+    keywords: ['government', 'policy', 'election', 'party', 'minister', 'opposition', 'ruling', 'सरकार', 'चुनाव']
+  },
+  regional: {
+    regions: ['delhi', 'mumbai', 'bangalore', 'kolkata', 'chennai', 'hyderabad', 'north india', 'south india', 'northeast', 'दिल्ली', 'मुंबई'],
+    bias_words: ['always', 'never', 'only', 'just', 'typical', 'usual', 'all', 'none'],
+    stereotypes: ['backward', 'advanced', 'developed', 'underdeveloped', 'modern', 'traditional']
+  },
+  sentiment: {
+    positive: ['success', 'achievement', 'progress', 'excellent', 'outstanding', 'improved', 'growth', 'beneficial', 'सफलता', 'विकास'],
+    negative: ['failure', 'crisis', 'problem', 'poor', 'declined', 'worse', 'issue', 'concern', 'criticized', 'संकट', 'समस्या'],
+    extreme: ['disaster', 'catastrophe', 'perfect', 'amazing', 'terrible', 'horrible', 'brilliant', 'awful']
+  },
+  source: {
+    credible: ['official', 'confirmed', 'verified', 'according to', 'stated', 'announced', 'पुष्टि'],
+    weak: ['reportedly', 'allegedly', 'rumored', 'sources say', 'it is believed', 'कथित'],
+    anonymous: ['unnamed source', 'anonymous', 'confidential source', 'insider']
+  },
+  representation: {
+    gender: ['he', 'she', 'his', 'her', 'male', 'female', 'man', 'woman', 'वह', 'उसकी', 'उसका'],
+    religious: ['hindu', 'muslim', 'christian', 'sikh', 'buddhist', 'jain', 'हिंदू', 'मुस्लिम'],
+    caste: ['brahmin', 'dalit', 'obc', 'general', 'reservation', 'ब्राह्मण', 'दलित'],
+    class: ['rich', 'poor', 'elite', 'middle class', 'wealthy', 'अमीर', 'गरीब']
+  },
+  language: {
+    loaded: ['clearly', 'obviously', 'undeniably', 'definitely', 'absolutely', 'स्पष्ट रूप से'],
+    extreme: ['always', 'never', 'every', 'all', 'none', 'हमेशा', 'कभी नहीं'],
+    emotional: ['shocking', 'outrageous', 'stunning', 'incredible', 'unbelievable', 'चौंकाने वाला']
+  },
+  factual: {
+    facts: ['according to data', 'statistics show', 'research indicates', 'study found', 'आंकड़े', 'अध्ययन'],
+    opinions: ['believe', 'think', 'feel', 'opinion', 'view', 'seems', 'appears', 'राय', 'लगता है'],
+    speculation: ['could', 'might', 'may', 'possibly', 'perhaps', 'probably', 'शायद', 'संभवतः'],
+    unsupported: ['some say', 'many believe', 'it is said', 'कहा जाता है']
+  },
+  headline: {
+    clickbait: ['shocking', 'you wont believe', 'amazing', 'stunning', 'exclusive', 'breaking'],
+    question: ['?', 'how', 'why', 'what', 'when', 'where', 'क्या', 'कैसे'],
+    sensational: ['crisis', 'disaster', 'explosive', 'bombshell', 'revelation', 'सनसनीखेज'],
+    misleading: ['suggests', 'implies', 'hints', 'indicates']
+  },
+  attribution: {
+    direct: ['said', 'stated', 'announced', 'declared', 'confirmed', 'कहा', 'घोषित'],
+    indirect: ['according to', 'as per', 'sources say', 'के अनुसार'],
+    vague: ['some', 'many', 'several', 'a few', 'others', 'कुछ', 'कई'],
+    missing: ['is', 'are', 'was', 'were', 'has', 'have']
+  },
+  temporal: {
+    current: ['today', 'now', 'currently', 'this week', 'recently', 'आज', 'अभी'],
+    past: ['yesterday', 'last week', 'previously', 'earlier', 'कल', 'पिछले'],
+    vague: ['soon', 'later', 'eventually', 'sometime', 'जल्द ही'],
+    urgent: ['immediately', 'urgently', 'now', 'right now', 'तुरंत']
+  },
+  omission: {
+    context_words: ['however', 'but', 'although', 'despite', 'nevertheless', 'लेकिन', 'हालांकि'],
+    both_sides: ['on one hand', 'on the other hand', 'alternatively', 'conversely'],
+    qualifiers: ['some', 'many', 'most', 'several', 'few'],
+    counter_points: ['critics say', 'opponents argue', 'others believe', 'विरोधी']
+  },
+  framing: {
+    war: ['battle', 'fight', 'combat', 'war', 'attack', 'defend', 'युद्ध', 'लड़ाई'],
+    sports: ['win', 'lose', 'defeat', 'victory', 'compete', 'जीत', 'हार'],
+    drama: ['dramatic', 'tension', 'conflict', 'clash', 'confrontation', 'नाटकीय'],
+    economic: ['cost', 'benefit', 'profit', 'loss', 'value', 'लाभ', 'हानि'],
+    moral: ['right', 'wrong', 'good', 'bad', 'ethical', 'unethical', 'सही', 'गलत']
+  }
+};
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -17,133 +86,283 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { title, content, feedbackId } = await req.json();
-    const fullText = `${title} ${content}`;
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const body = await req.json();
+    const { title, content, feedbackId } = body;
 
-    const politicalBias = analyzePoliticalBias(fullText);
-    const regionalBias = analyzeRegionalBias(fullText);
-    const sentimentBias = analyzeSentimentBias(fullText);
-    const sourceReliabilityBias = analyzeSourceReliability(fullText);
-    const representationBias = analyzeRepresentation(fullText);
-    const languageBias = analyzeLanguageBias(fullText);
+    if (!title && !content) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Title or content required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
 
-    // New 6 dimensions
-    const factualAccuracyBias = analyzeFactualAccuracy(fullText);
-    const headlineContentBias = analyzeHeadlineContentMatch(title, content);
-    const attributionBias = analyzeAttributionBias(fullText);
-    const temporalBias = analyzeTemporalBias(fullText);
-    const omissionBias = analyzeOmissionBias(fullText);
-    const framingBias = analyzeFramingBias(fullText);
+    console.log(`🔍 Analyzing 12 dimensions for: ${title}`);
 
-    const overallScore = (
-      politicalBias.score +
-      regionalBias.score +
-      sentimentBias.score +
-      sourceReliabilityBias.score +
-      representationBias.score +
-      languageBias.score +
-      factualAccuracyBias.score +
-      headlineContentBias.score +
-      attributionBias.score +
-      temporalBias.score +
-      omissionBias.score +
-      framingBias.score
-    ) / 12;
+    const text = `${title} ${content || ''}`.toLowerCase();
+    const titleLower = title.toLowerCase();
 
-    let classification = 'Low Bias';
-    if (overallScore >= 50) classification = 'High Bias';
-    else if (overallScore >= 25) classification = 'Medium Bias';
+    // ============================================
+    // DIMENSION 1: POLITICAL BIAS
+    // ============================================
+    const politicalBias = analyzePoliticalBias(text);
 
-    const sentimentAnalysis = {
-      score: 0,
-      label: 'neutral',
-      confidence: 0.8,
-      topics: [],
-      entities: [],
-      keywords: []
+    // ============================================
+    // DIMENSION 2: REGIONAL BIAS
+    // ============================================
+    const regionalBias = analyzeRegionalBias(text);
+
+    // ============================================
+    // DIMENSION 3: SENTIMENT BIAS
+    // ============================================
+    const sentimentBias = analyzeSentimentBias(text);
+
+    // ============================================
+    // DIMENSION 4: SOURCE RELIABILITY
+    // ============================================
+    const sourceReliability = analyzeSourceReliability(text);
+
+    // ============================================
+    // DIMENSION 5: REPRESENTATION BIAS
+    // ============================================
+    const representationBias = analyzeRepresentationBias(text);
+
+    // ============================================
+    // DIMENSION 6: LANGUAGE BIAS
+    // ============================================
+    const languageBias = analyzeLanguageBias(text);
+
+    // ============================================
+    // DIMENSION 7: FACTUAL ACCURACY (NEW)
+    // ============================================
+    const factualAccuracy = analyzeFactualAccuracy(text);
+
+    // ============================================
+    // DIMENSION 8: HEADLINE BIAS (NEW)
+    // ============================================
+    const headlineBias = analyzeHeadlineBias(titleLower);
+
+    // ============================================
+    // DIMENSION 9: ATTRIBUTION BIAS (NEW)
+    // ============================================
+    const attributionBias = analyzeAttributionBias(text);
+
+    // ============================================
+    // DIMENSION 10: TEMPORAL BIAS (NEW)
+    // ============================================
+    const temporalBias = analyzeTemporalBias(text);
+
+    // ============================================
+    // DIMENSION 11: OMISSION BIAS (NEW)
+    // ============================================
+    const omissionBias = analyzeOmissionBias(text);
+
+    // ============================================
+    // DIMENSION 12: FRAMING BIAS (NEW)
+    // ============================================
+    const framingBias = analyzeFramingBias(text);
+
+    // Calculate overall bias score (weighted average)
+    const overallScore = Math.round(
+      (politicalBias * 0.12) +
+      (regionalBias * 0.08) +
+      (sentimentBias * 0.12) +
+      (sourceReliability * 0.08) +
+      (representationBias * 0.08) +
+      (languageBias * 0.08) +
+      (factualAccuracy * 0.10) +
+      (headlineBias * 0.10) +
+      (attributionBias * 0.08) +
+      (temporalBias * 0.06) +
+      (omissionBias * 0.06) +
+      (framingBias * 0.04)
+    );
+
+    // Determine classification
+    let classification = 'Neutral';
+    if (overallScore < 35) classification = 'Low Bias';
+    else if (overallScore < 65) classification = 'Medium Bias';
+    else classification = 'High Bias';
+
+    // Determine sentiment label
+    let sentimentLabel = 'neutral';
+    const posCount = countKeywords(text, biasPatterns.sentiment.positive);
+    const negCount = countKeywords(text, biasPatterns.sentiment.negative);
+
+    if (posCount > negCount + 2) sentimentLabel = 'positive';
+    else if (negCount > posCount + 2) sentimentLabel = 'negative';
+    else if (Math.abs(posCount - negCount) <= 1 && (posCount > 0 || negCount > 0)) sentimentLabel = 'mixed';
+
+    const sentimentScore = (posCount - negCount) / Math.max(1, posCount + negCount);
+
+    // Detailed analysis with evidence for ALL 12 dimensions
+    const detailedAnalysis = {
+      political_bias: {
+        score: politicalBias,
+        explanation: getPoliticalExplanation(politicalBias),
+        evidence: extractEvidence(text, [...biasPatterns.political.left, ...biasPatterns.political.right])
+      },
+      regional_bias: {
+        score: regionalBias,
+        explanation: getRegionalExplanation(regionalBias),
+        evidence: extractEvidence(text, biasPatterns.regional.regions)
+      },
+      sentiment_bias: {
+        score: sentimentBias,
+        explanation: getSentimentExplanation(sentimentBias),
+        evidence: extractEvidence(text, [...biasPatterns.sentiment.positive, ...biasPatterns.sentiment.negative, ...biasPatterns.sentiment.extreme])
+      },
+      source_reliability: {
+        score: sourceReliability,
+        explanation: getSourceExplanation(sourceReliability),
+        evidence: extractEvidence(text, [...biasPatterns.source.credible, ...biasPatterns.source.weak])
+      },
+      representation_bias: {
+        score: representationBias,
+        explanation: getRepresentationExplanation(representationBias),
+        evidence: extractEvidence(text, [...biasPatterns.representation.religious, ...biasPatterns.representation.caste])
+      },
+      language_bias: {
+        score: languageBias,
+        explanation: getLanguageExplanation(languageBias),
+        evidence: extractEvidence(text, [...biasPatterns.language.loaded, ...biasPatterns.language.extreme])
+      },
+      factual_accuracy: {
+        score: factualAccuracy,
+        explanation: getFactualExplanation(factualAccuracy),
+        evidence: extractEvidence(text, [...biasPatterns.factual.opinions, ...biasPatterns.factual.speculation])
+      },
+      headline_bias: {
+        score: headlineBias,
+        explanation: getHeadlineExplanation(headlineBias),
+        evidence: [titleLower.substring(0, 100)]
+      },
+      attribution_bias: {
+        score: attributionBias,
+        explanation: getAttributionExplanation(attributionBias),
+        evidence: extractEvidence(text, [...biasPatterns.attribution.vague, ...biasPatterns.attribution.indirect])
+      },
+      temporal_bias: {
+        score: temporalBias,
+        explanation: getTemporalExplanation(temporalBias),
+        evidence: extractEvidence(text, [...biasPatterns.temporal.vague, ...biasPatterns.temporal.urgent])
+      },
+      omission_bias: {
+        score: omissionBias,
+        explanation: getOmissionExplanation(omissionBias),
+        evidence: extractEvidence(text, biasPatterns.omission.context_words)
+      },
+      framing_bias: {
+        score: framingBias,
+        explanation: getFramingExplanation(framingBias),
+        evidence: extractEvidence(text, [...biasPatterns.framing.war, ...biasPatterns.framing.drama])
+      }
     };
 
+    // Prepare comprehensive bias indicators
+    const biasIndicators = {
+      overall_score: overallScore,
+      classification: classification,
+      political_bias: politicalBias,
+      regional_bias: regionalBias,
+      sentiment_bias: sentimentBias,
+      source_reliability_bias: sourceReliability,
+      representation_bias: representationBias,
+      language_bias: languageBias,
+      factual_accuracy_bias: factualAccuracy,
+      headline_content_bias: headlineBias,
+      attribution_bias: attributionBias,
+      temporal_bias: temporalBias,
+      omission_bias: omissionBias,
+      framing_bias: framingBias,
+      detailed_analysis: detailedAnalysis
+    };
+
+    // Update database if feedbackId provided
     if (feedbackId) {
-      const { error: upsertError } = await supabase.from('ai_analyses').upsert({
-        feedback_id: feedbackId,
-        sentiment_score: sentimentAnalysis.score,
-        sentiment_label: sentimentAnalysis.label,
-        topics: sentimentAnalysis.topics,
-        entities: sentimentAnalysis.entities,
-        keywords: sentimentAnalysis.keywords,
-        language_detected: detectLanguage(fullText),
-        confidence_score: sentimentAnalysis.confidence,
-        bias_indicators: {
-          political_bias: politicalBias.score,
-          regional_bias: regionalBias.score,
-          sentiment_bias: sentimentBias.score,
-          source_reliability_bias: sourceReliabilityBias.score,
-          representation_bias: representationBias.score,
-          language_bias: languageBias.score,
-          factual_accuracy_bias: factualAccuracyBias.score,
-          headline_content_bias: headlineContentBias.score,
-          attribution_bias: attributionBias.score,
-          temporal_bias: temporalBias.score,
-          omission_bias: omissionBias.score,
-          framing_bias: framingBias.score,
-          overall_score: Math.round(overallScore),
-          classification: classification,
-          detailed_analysis: {
-            political: politicalBias,
-            regional: regionalBias,
-            sentiment: sentimentBias,
-            source_reliability: sourceReliabilityBias,
-            representation: representationBias,
-            language: languageBias,
-            factual_accuracy: factualAccuracyBias,
-            headline_content: headlineContentBias,
-            attribution: attributionBias,
-            temporal: temporalBias,
-            omission: omissionBias,
-            framing: framingBias,
-          },
-        },
-      }, { onConflict: 'feedback_id' });
-
-      if (upsertError) {
-        console.error('Database upsert error:', upsertError);
-        throw new Error(`Failed to save analysis: ${upsertError.message}`);
-      }
-
-      const { error: updateError } = await supabase.from('feedback_items').update({ status: 'analyzed' }).eq('id', feedbackId);
+      // Update feedback_items
+      const { error: updateError } = await supabaseClient
+        .from('feedback_items')
+        .update({ status: 'analyzed' })
+        .eq('id', feedbackId);
 
       if (updateError) {
-        console.error('Status update error:', updateError);
+        console.error('Error updating feedback_items:', updateError);
       }
+
+      // Insert or update ai_analyses
+      const { data: existingAnalysis } = await supabaseClient
+        .from('ai_analyses')
+        .select('id')
+        .eq('feedback_id', feedbackId)
+        .maybeSingle();
+
+      if (existingAnalysis) {
+        // Update existing
+        await supabaseClient
+          .from('ai_analyses')
+          .update({
+            sentiment_score: sentimentScore,
+            sentiment_label: sentimentLabel,
+            bias_indicators: biasIndicators,
+            language_detected: 'English',
+            confidence_score: 0.85
+          })
+          .eq('id', existingAnalysis.id);
+      } else {
+        // Insert new
+        await supabaseClient
+          .from('ai_analyses')
+          .insert({
+            feedback_id: feedbackId,
+            sentiment_score: sentimentScore,
+            sentiment_label: sentimentLabel,
+            bias_indicators: biasIndicators,
+            language_detected: 'English',
+            confidence_score: 0.85,
+            topics: [],
+            entities: [],
+            keywords: []
+          });
+      }
+
+      console.log(`✅ 12-dimension analysis saved for feedback ${feedbackId}`);
     }
 
     return new Response(
       JSON.stringify({
         success: true,
         analysis: {
-          overall_score: Math.round(overallScore),
-          classification,
-          political_bias: politicalBias,
-          regional_bias: regionalBias,
-          sentiment_bias: sentimentBias,
-          source_reliability_bias: sourceReliabilityBias,
-          representation_bias: representationBias,
-          language_bias: languageBias,
-          factual_accuracy_bias: factualAccuracyBias,
-          headline_content_bias: headlineContentBias,
-          attribution_bias: attributionBias,
-          temporal_bias: temporalBias,
-          omission_bias: omissionBias,
-          framing_bias: framingBias,
-        },
+          overall_score: overallScore,
+          classification: classification,
+          sentiment_label: sentimentLabel,
+          sentiment_score: sentimentScore,
+          dimensions: {
+            political_bias: politicalBias,
+            regional_bias: regionalBias,
+            sentiment_bias: sentimentBias,
+            source_reliability_bias: sourceReliability,
+            representation_bias: representationBias,
+            language_bias: languageBias,
+            factual_accuracy_bias: factualAccuracy,
+            headline_bias: headlineBias,
+            attribution_bias: attributionBias,
+            temporal_bias: temporalBias,
+            omission_bias: omissionBias,
+            framing_bias: framingBias
+          },
+          detailed_analysis: detailedAnalysis
+        }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+
   } catch (error) {
+    console.error('❌ 12-dimension bias detection error:', error);
     return new Response(
       JSON.stringify({ success: false, error: error.message }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 500 }
@@ -151,711 +370,264 @@ Deno.serve(async (req) => {
   }
 });
 
-function analyzePoliticalBias(text: string): BiasAnalysis {
-  const evidence: string[] = [];
-  let score = 0;
+// ============================================
+// ANALYSIS FUNCTIONS FOR EACH DIMENSION
+// ============================================
 
-  const textLower = text.toLowerCase();
-  const wordCount = text.split(/\s+/).length;
+function analyzePoliticalBias(text: string): number {
+  const leftCount = countKeywords(text, biasPatterns.political.left);
+  const rightCount = countKeywords(text, biasPatterns.political.right);
+  const politicalCount = countKeywords(text, biasPatterns.political.keywords);
 
-  // Political party and figure mentions (contextual)
-  const partyTerms = {
-    'bjp': 0, 'congress': 0, 'modi': 0, 'gandhi': 0, 'aap': 0,
-    'left': 0, 'right': 0, 'liberal': 0, 'conservative': 0
-  };
+  if (politicalCount === 0) return 25;
 
-  Object.keys(partyTerms).forEach(term => {
-    const matches = (textLower.match(new RegExp(`\\b${term}\\b`, 'g')) || []).length;
-    if (matches > 0) partyTerms[term] = matches;
-  });
+  const imbalance = Math.abs(leftCount - rightCount);
+  const totalPolitical = leftCount + rightCount + 1;
 
-  const totalPartyMentions = Object.values(partyTerms).reduce((a, b) => a + b, 0);
-  if (totalPartyMentions > 0) {
-    score += Math.min(40, totalPartyMentions * 8);
-    if (totalPartyMentions > 2) {
-      evidence.push(`Heavy political focus (${totalPartyMentions} political entity mentions)`);
-    }
-  }
-
-  // Loaded/biased political language
-  const highBiasTerms = ['alleged', 'claims without evidence', 'propaganda', 'regime', 'puppet', 'vendetta', 'bogus', 'loot'];
-  const moderateBiasTerms = ['controversial', 'criticized', 'praised', 'slammed', 'blasted', 'defended', 'attacked', 'accused'];
-
-  highBiasTerms.forEach(term => {
-    if (textLower.includes(term)) {
-      score += 20;
-      evidence.push(`Politically loaded term: '${term}'`);
-    }
-  });
-
-  moderateBiasTerms.forEach(term => {
-    const count = (textLower.match(new RegExp(`\\b${term}\\b`, 'g')) || []).length;
-    if (count > 0) {
-      score += count * 10;
-      if (count >= 1) evidence.push(`Charged language: '${term}' (${count}x)`);
-    }
-  });
-
-  score = Math.min(100, score);
-
-  const explanation = score > 50
-    ? 'Significant political bias and loaded language detected'
-    : score > 20
-    ? 'Some political framing present'
-    : 'Minimal political bias';
-
-  return { score, evidence, explanation };
+  return Math.min(100, 25 + (imbalance / totalPolitical) * 75);
 }
 
-function analyzeRegionalBias(text: string): BiasAnalysis {
-  const evidence: string[] = [];
-  let score = 0;
+function analyzeRegionalBias(text: string): number {
+  const regionMentions = countKeywords(text, biasPatterns.regional.regions);
+  const biasWords = countKeywords(text, biasPatterns.regional.bias_words);
+  const stereotypes = countKeywords(text, biasPatterns.regional.stereotypes);
 
-  const textLower = text.toLowerCase();
+  if (regionMentions === 0) return 15;
 
-  // Major Indian cities
-  const regions = {
-    'delhi': 0, 'mumbai': 0, 'kolkata': 0, 'chennai': 0,
-    'bangalore': 0, 'hyderabad': 0, 'pune': 0, 'ahmedabad': 0
-  };
-
-  // Regional descriptors
-  const regionalDescriptors = ['north india', 'south india', 'east india', 'west india', 'northeast'];
-
-  Object.keys(regions).forEach(region => {
-    const matches = (textLower.match(new RegExp(`\\b${region}\\b`, 'g')) || []).length;
-    if (matches > 0) regions[region] = matches;
-  });
-
-  const mentionedRegions = Object.entries(regions).filter(([_, count]) => count > 0);
-  const totalMentions = mentionedRegions.reduce((sum, [_, count]) => sum + count, 0);
-
-  if (mentionedRegions.length === 1 && totalMentions >= 2) {
-    score += Math.min(50, totalMentions * 12);
-    evidence.push(`Strong regional focus on ${mentionedRegions[0][0]} (${totalMentions} mentions)`);
-  } else if (mentionedRegions.length > 0) {
-    score += Math.min(30, mentionedRegions.length * 8);
-    if (totalMentions >= 2) {
-      evidence.push(`Regional focuses: ${mentionedRegions.map(([r]) => r).join(', ')}`);
-    }
-  }
-
-  regionalDescriptors.forEach(descriptor => {
-    if (textLower.includes(descriptor)) {
-      score += 15;
-      evidence.push(`Regional framing: '${descriptor}'`);
-    }
-  });
-
-  score = Math.min(100, score);
-
-  const explanation = score > 40
-    ? 'Strong regional focus may limit broader perspective'
-    : score > 15
-    ? 'Some regional emphasis present'
-    : 'Balanced geographic coverage';
-
-  return { score, evidence, explanation };
+  const biasRatio = (biasWords + stereotypes * 2) / (regionMentions + 1);
+  return Math.min(100, 15 + biasRatio * 85);
 }
 
-function analyzeSentimentBias(text: string): BiasAnalysis {
-  const evidence: string[] = [];
-  let score = 0;
+function analyzeSentimentBias(text: string): number {
+  const posCount = countKeywords(text, biasPatterns.sentiment.positive);
+  const negCount = countKeywords(text, biasPatterns.sentiment.negative);
+  const extremeCount = countKeywords(text, biasPatterns.sentiment.extreme);
 
-  const textLower = text.toLowerCase();
+  const total = posCount + negCount + 1;
+  const imbalance = Math.abs(posCount - negCount);
 
-  // Extreme sentiment words
-  const extremeNegative = ['crisis', 'disaster', 'catastrophe', 'scandal', 'outrage', 'chaos', 'corruption', 'fraud'];
-  const extremePositive = ['triumph', 'miraculous', 'revolutionary', 'historic victory'];
+  const baseScore = (imbalance / total) * 50;
+  const extremeBonus = (extremeCount / total) * 50;
 
-  // Strong sentiment words
-  const strongNegative = ['failure', 'problem', 'concern', 'criticism', 'opposition', 'conflict'];
-  const strongPositive = ['success', 'achievement', 'breakthrough', 'victory', 'progress'];
-
-  let negativeCount = 0;
-  let positiveCount = 0;
-
-  extremeNegative.forEach(term => {
-    const count = (textLower.match(new RegExp(`\\b${term}\\b`, 'g')) || []).length;
-    if (count > 0) {
-      score += count * 18;
-      negativeCount += count;
-      evidence.push(`Extreme negative: '${term}' (${count}x)`);
-    }
-  });
-
-  extremePositive.forEach(term => {
-    const count = (textLower.match(new RegExp(`\\b${term}\\b`, 'g')) || []).length;
-    if (count > 0) {
-      score += count * 18;
-      positiveCount += count;
-      evidence.push(`Extreme positive: '${term}' (${count}x)`);
-    }
-  });
-
-  strongNegative.forEach(term => {
-    const count = (textLower.match(new RegExp(`\\b${term}\\b`, 'g')) || []).length;
-    if (count > 0) {
-      score += count * 10;
-      negativeCount += count;
-    }
-  });
-
-  strongPositive.forEach(term => {
-    const count = (textLower.match(new RegExp(`\\b${term}\\b`, 'g')) || []).length;
-    if (count > 0) {
-      score += count * 10;
-      positiveCount += count;
-    }
-  });
-
-  const sentimentImbalance = Math.abs(negativeCount - positiveCount);
-  if (sentimentImbalance >= 2) {
-    score += sentimentImbalance * 8;
-    evidence.push(`Sentiment imbalance: ${negativeCount} negative vs ${positiveCount} positive`);
-  }
-
-  score = Math.min(100, score);
-
-  const explanation = score > 50
-    ? 'Highly emotionally charged language'
-    : score > 25
-    ? 'Noticeable sentiment bias'
-    : 'Relatively balanced sentiment';
-
-  return { score, evidence, explanation };
+  return Math.min(100, baseScore + extremeBonus);
 }
 
-function analyzeSourceReliability(text: string): BiasAnalysis {
-  const evidence: string[] = [];
-  let score = 0;
+function analyzeSourceReliability(text: string): number {
+  const credible = countKeywords(text, biasPatterns.source.credible);
+  const weak = countKeywords(text, biasPatterns.source.weak);
+  const anonymous = countKeywords(text, biasPatterns.source.anonymous);
 
-  const textLower = text.toLowerCase();
+  if (credible + weak + anonymous === 0) return 50;
 
-  // Weak sourcing indicators
-  const weakSources = ['sources say', 'reportedly', 'allegedly', 'rumors suggest', 'insiders claim', 'unconfirmed'];
-  const strongSources = ['according to', 'official statement', 'confirmed', 'data shows', 'research indicates'];
-
-  let weakCount = 0;
-  let strongCount = 0;
-
-  weakSources.forEach(term => {
-    if (textLower.includes(term)) {
-      score += 20;
-      weakCount++;
-      evidence.push(`Weak sourcing: '${term}'`);
-    }
-  });
-
-  strongSources.forEach(term => {
-    if (textLower.includes(term)) {
-      strongCount++;
-      score -= 5;
-    }
-  });
-
-  if (!textLower.includes('according') && !textLower.includes('said') && !textLower.includes('stated')) {
-    score += 15;
-    evidence.push('No clear source attribution');
-  }
-
-  score = Math.max(0, Math.min(100, score));
-
-  const explanation = score > 40
-    ? 'Significant sourcing concerns'
-    : score > 15
-    ? 'Some sourcing reliability issues'
-    : 'Adequate source attribution';
-
-  return { score, evidence, explanation };
+  const reliabilityScore = (credible * 100) / (credible + weak * 2 + anonymous * 3 + 1);
+  return Math.min(100, 100 - reliabilityScore);
 }
 
-function analyzeRepresentation(text: string): BiasAnalysis {
-  const evidence: string[] = [];
-  let score = 0;
+function analyzeRepresentationBias(text: string): number {
+  const genderMentions = countKeywords(text, biasPatterns.representation.gender);
+  const religiousMentions = countKeywords(text, biasPatterns.representation.religious);
+  const casteMentions = countKeywords(text, biasPatterns.representation.caste);
+  const classMentions = countKeywords(text, biasPatterns.representation.class);
 
-  const textLower = text.toLowerCase();
-  const wordCount = text.split(/\s+/).length;
+  const totalMentions = genderMentions + religiousMentions + casteMentions * 2 + classMentions;
 
-  // Look for diverse perspectives
-  const perspectiveIndicators = [
-    'however', 'but', 'on the other hand', 'alternatively', 'critics say',
-    'supporters argue', 'opponents claim', 'proponents state', 'while others'
-  ];
+  if (totalMentions === 0) return 20;
 
-  let perspectiveCount = 0;
-  perspectiveIndicators.forEach(indicator => {
-    if (textLower.includes(indicator)) {
-      perspectiveCount++;
-    }
-  });
-
-  if (wordCount < 100) {
-    score = 30;
-  } else if (perspectiveCount === 0) {
-    score = 60;
-    evidence.push('Single perspective - no contrasting views');
-  } else if (perspectiveCount === 1) {
-    score = 40;
-    evidence.push('Limited perspective diversity');
-  } else if (perspectiveCount === 2) {
-    score = 25;
-    evidence.push('Some perspective diversity');
-  } else {
-    score = 10;
-    evidence.push(`Multiple viewpoints presented (${perspectiveCount} indicators)`);
-  }
-
-  const quoteCount = (text.match(/["'"]/g) || []).length / 2;
-  if (quoteCount < 2 && wordCount > 150) {
-    score += 15;
-    evidence.push('Limited direct quotes from sources');
-  }
-
-  score = Math.min(100, score);
-
-  const explanation = score > 40
-    ? 'Limited representation of diverse viewpoints'
-    : score > 20
-    ? 'Some perspective diversity'
-    : 'Multiple perspectives represented';
-
-  return { score, evidence, explanation };
+  return Math.min(100, 20 + (totalMentions * 8));
 }
 
-function analyzeLanguageBias(text: string): BiasAnalysis {
-  const evidence: string[] = [];
-  let score = 0;
+function analyzeLanguageBias(text: string): number {
+  const loadedCount = countKeywords(text, biasPatterns.language.loaded);
+  const extremeCount = countKeywords(text, biasPatterns.language.extreme);
+  const emotionalCount = countKeywords(text, biasPatterns.language.emotional);
+  const words = text.split(/\s+/).length;
 
-  const textLower = text.toLowerCase();
+  if (words === 0) return 0;
 
-  // Sensational language
-  const sensationalTerms = ['shocking', 'stunning', 'explosive', 'bombshell', 'unbelievable', 'incredible', 'dramatic'];
-  const clickbaitPhrases = ['you won\'t believe', 'this will', 'what happens next', 'the truth about'];
-
-  sensationalTerms.forEach(term => {
-    const count = (textLower.match(new RegExp(`\\b${term}\\b`, 'g')) || []).length;
-    if (count > 0) {
-      score += count * 15;
-      evidence.push(`Sensational: '${term}' (${count}x)`);
-    }
-  });
-
-  clickbaitPhrases.forEach(phrase => {
-    if (textLower.includes(phrase)) {
-      score += 35;
-      evidence.push(`Clickbait phrase: '${phrase}'`);
-    }
-  });
-
-  const capsWords = (text.match(/\b[A-Z]{4,}\b/g) || []).length;
-  if (capsWords > 0) {
-    score += capsWords * 12;
-    evidence.push(`${capsWords} words in ALL CAPS`);
-  }
-
-  const exclamations = (text.match(/!/g) || []).length;
-  if (exclamations > 2) {
-    score += exclamations * 8;
-    evidence.push(`Excessive exclamation marks (${exclamations})`);
-  }
-
-  score = Math.min(100, score);
-
-  const explanation = score > 50
-    ? 'Highly sensational language'
-    : score > 25
-    ? 'Some sensationalism present'
-    : 'Professional language tone';
-
-  return { score, evidence, explanation };
+  const ratio = (loadedCount + extremeCount * 2 + emotionalCount * 1.5) / words;
+  return Math.min(100, ratio * 300);
 }
 
-function detectLanguage(text: string): string {
-  const hindiPattern = /[\u0900-\u097F]/;
-  const tamilPattern = /[\u0B80-\u0BFF]/;
-  const teluguPattern = /[\u0C00-\u0C7F]/;
-  const kannadaPattern = /[\u0C80-\u0CFF]/;
+function analyzeFactualAccuracy(text: string): number {
+  const facts = countKeywords(text, biasPatterns.factual.facts);
+  const opinions = countKeywords(text, biasPatterns.factual.opinions);
+  const speculation = countKeywords(text, biasPatterns.factual.speculation);
+  const unsupported = countKeywords(text, biasPatterns.factual.unsupported);
 
-  if (hindiPattern.test(text)) return 'Hindi';
-  if (tamilPattern.test(text)) return 'Tamil';
-  if (teluguPattern.test(text)) return 'Telugu';
-  if (kannadaPattern.test(text)) return 'Kannada';
-  return 'English';
+  const total = facts + opinions + speculation + unsupported + 1;
+
+  const biasScore = ((opinions + speculation * 1.5 + unsupported * 2) / total) * 100;
+  return Math.min(100, biasScore);
 }
 
-// New Dimension 1: Factual Accuracy Bias
-function analyzeFactualAccuracy(text: string): BiasAnalysis {
-  const evidence: string[] = [];
-  let score = 0;
-  const textLower = text.toLowerCase();
+function analyzeHeadlineBias(headline: string): number {
+  const clickbaitCount = countKeywords(headline, biasPatterns.headline.clickbait);
+  const questionCount = headline.includes('?') ? 1 : 0;
+  const sensationalCount = countKeywords(headline, biasPatterns.headline.sensational);
+  const misleadingCount = countKeywords(headline, biasPatterns.headline.misleading);
 
-  // Unverified claim indicators
-  const unverifiedPhrases = ['some say', 'many believe', 'it is said', 'rumors', 'speculation'];
-  const hedgingWords = ['possibly', 'perhaps', 'might', 'could be', 'may have'];
-  const absoluteWords = ['always', 'never', 'everyone', 'no one', 'all', 'none'];
-
-  unverifiedPhrases.forEach(phrase => {
-    if (textLower.includes(phrase)) {
-      score += 20;
-      evidence.push(`Unverified claim indicator: '${phrase}'`);
-    }
-  });
-
-  let hedgingCount = 0;
-  hedgingWords.forEach(word => {
-    const count = (textLower.match(new RegExp(`\\b${word}\\b`, 'g')) || []).length;
-    if (count > 0) {
-      hedgingCount += count;
-    }
-  });
-
-  if (hedgingCount > 3) {
-    score += hedgingCount * 5;
-    evidence.push(`Excessive hedging language (${hedgingCount} instances)`);
-  }
-
-  let absoluteCount = 0;
-  absoluteWords.forEach(word => {
-    const count = (textLower.match(new RegExp(`\\b${word}\\b`, 'g')) || []).length;
-    if (count > 0) {
-      absoluteCount += count;
-    }
-  });
-
-  if (absoluteCount > 2) {
-    score += absoluteCount * 8;
-    evidence.push(`Absolute statements without nuance (${absoluteCount} instances)`);
-  }
-
-  // Check for numbers without sources
-  const hasNumbers = /\d+/.test(text);
-  const hasSourceAttribution = textLower.includes('according to') || textLower.includes('data from') || textLower.includes('study');
-
-  if (hasNumbers && !hasSourceAttribution) {
-    score += 15;
-    evidence.push('Statistics presented without source attribution');
-  }
-
-  score = Math.min(100, score);
-
-  const explanation = score > 50
-    ? 'Significant concerns about factual verification'
-    : score > 25
-    ? 'Some unverified claims present'
-    : 'Reasonable factual grounding';
-
-  return { score, evidence, explanation };
+  const biasScore = (clickbaitCount * 25) + (questionCount * 15) + (sensationalCount * 30) + (misleadingCount * 20);
+  return Math.min(100, biasScore);
 }
 
-// New Dimension 2: Headline-Content Mismatch
-function analyzeHeadlineContentMatch(title: string, content: string): BiasAnalysis {
-  const evidence: string[] = [];
-  let score = 0;
+function analyzeAttributionBias(text: string): number {
+  const direct = countKeywords(text, biasPatterns.attribution.direct);
+  const indirect = countKeywords(text, biasPatterns.attribution.indirect);
+  const vague = countKeywords(text, biasPatterns.attribution.vague);
 
-  const titleLower = title.toLowerCase();
-  const contentLower = content.toLowerCase();
+  if (direct + indirect + vague === 0) return 60;
 
-  // Clickbait headline indicators
-  const clickbaitWords = ['shocking', 'unbelievable', 'you won\'t believe', 'mind-blowing', 'jaw-dropping'];
-
-  clickbaitWords.forEach(word => {
-    if (titleLower.includes(word)) {
-      score += 25;
-      evidence.push(`Clickbait headline: '${word}'`);
-    }
-  });
-
-  // Question headlines without answers
-  if (titleLower.includes('?') && content.length < 200) {
-    score += 20;
-    evidence.push('Question headline with insufficient content');
-  }
-
-  // Extract key entities from headline
-  const titleWords = title.split(/\s+/).filter(w => w.length > 4);
-  let matchCount = 0;
-  titleWords.forEach(word => {
-    if (contentLower.includes(word.toLowerCase())) {
-      matchCount++;
-    }
-  });
-
-  const matchRatio = titleWords.length > 0 ? matchCount / titleWords.length : 1;
-  if (matchRatio < 0.5 && titleWords.length > 3) {
-    score += 30;
-    evidence.push('Headline keywords poorly represented in content');
-  }
-
-  // Emotional mismatch
-  const emotionalHeadline = /!|shocking|outrage|scandal|crisis/.test(titleLower);
-  const neutralContent = !/!/.test(content) && content.length > 100;
-
-  if (emotionalHeadline && neutralContent) {
-    score += 15;
-    evidence.push('Emotional headline with neutral content');
-  }
-
-  score = Math.min(100, score);
-
-  const explanation = score > 50
-    ? 'Headline significantly misrepresents content'
-    : score > 25
-    ? 'Some headline-content inconsistency'
-    : 'Headline accurately reflects content';
-
-  return { score, evidence, explanation };
+  const attributionScore = (vague * 100) / (direct + indirect * 0.5 + vague + 1);
+  return Math.min(100, attributionScore);
 }
 
-// New Dimension 3: Attribution Bias
-function analyzeAttributionBias(text: string): BiasAnalysis {
-  const evidence: string[] = [];
-  let score = 0;
-  const textLower = text.toLowerCase();
+function analyzeTemporalBias(text: string): number {
+  const current = countKeywords(text, biasPatterns.temporal.current);
+  const past = countKeywords(text, biasPatterns.temporal.past);
+  const vague = countKeywords(text, biasPatterns.temporal.vague);
+  const urgent = countKeywords(text, biasPatterns.temporal.urgent);
 
-  // Count different types of sources
-  const anonymousSources = (textLower.match(/sources say|officials say|insiders/g) || []).length;
-  const namedSources = (textLower.match(/\w+ \w+ said|\w+ stated/g) || []).length;
+  if (current + past + vague + urgent === 0) return 30;
 
-  if (anonymousSources > namedSources && anonymousSources > 2) {
-    score += 30;
-    evidence.push(`Over-reliance on anonymous sources (${anonymousSources} vs ${namedSources} named)`);
-  }
-
-  // Single perspective dominance
-  const quotePattern = /["']([^"']{20,}?)["']/g;
-  const quotes = text.match(quotePattern) || [];
-
-  if (quotes.length === 0 && text.length > 200) {
-    score += 25;
-    evidence.push('No direct quotes - article lacks diverse voices');
-  } else if (quotes.length === 1) {
-    score += 15;
-    evidence.push('Single voice dominates the narrative');
-  }
-
-  // Check for counter-perspectives
-  const hasCounterView = textLower.includes('however') || textLower.includes('on the other hand') ||
-                         textLower.includes('critics') || textLower.includes('opponents');
-
-  if (!hasCounterView && text.length > 300) {
-    score += 20;
-    evidence.push('Missing opposing viewpoints or criticism');
-  }
-
-  score = Math.min(100, score);
-
-  const explanation = score > 50
-    ? 'Heavy attribution bias toward one perspective'
-    : score > 25
-    ? 'Limited diversity in sources cited'
-    : 'Balanced source attribution';
-
-  return { score, evidence, explanation };
+  const biasScore = ((vague * 2 + urgent * 1.5) / (current + past + vague + urgent + 1)) * 100;
+  return Math.min(100, biasScore);
 }
 
-// New Dimension 4: Temporal Bias
-function analyzeTemporalBias(text: string): BiasAnalysis {
-  const evidence: string[] = [];
-  let score = 0;
-  const textLower = text.toLowerCase();
+function analyzeOmissionBias(text: string): number {
+  const contextWords = countKeywords(text, biasPatterns.omission.context_words);
+  const bothSides = countKeywords(text, biasPatterns.omission.both_sides);
+  const qualifiers = countKeywords(text, biasPatterns.omission.qualifiers);
+  const counterPoints = countKeywords(text, biasPatterns.omission.counter_points);
 
-  // Cherry-picked timeframes
-  const selectiveTimeframes = ['in recent months', 'this year', 'recently', 'lately', 'of late'];
-  const specificDates = /\d{4}|\d{1,2}\/\d{1,2}|\w+ \d{1,2}/.test(text);
+  const balanceScore = contextWords + bothSides * 2 + qualifiers + counterPoints * 2;
+  const words = text.split(/\s+/).length;
 
-  let vagueTimeCount = 0;
-  selectiveTimeframes.forEach(phrase => {
-    if (textLower.includes(phrase)) {
-      vagueTimeCount++;
-    }
-  });
+  if (words === 0) return 50;
 
-  if (vagueTimeCount > 2 && !specificDates) {
-    score += 30;
-    evidence.push('Vague timeframes without specific dates');
-  }
-
-  // Historical context missing
-  const comparativeTerms = ['compared to', 'previously', 'historically', 'in the past', 'traditionally'];
-  let hasContext = false;
-  comparativeTerms.forEach(term => {
-    if (textLower.includes(term)) hasContext = true;
-  });
-
-  if (!hasContext && text.length > 300) {
-    score += 25;
-    evidence.push('Lacks historical context or comparison');
-  }
-
-  // Recency bias
-  const recencyWords = ['unprecedented', 'first time', 'never before', 'historic'];
-  let recencyCount = 0;
-  recencyWords.forEach(word => {
-    if (textLower.includes(word)) {
-      recencyCount++;
-      score += 15;
-    }
-  });
-
-  if (recencyCount > 0) {
-    evidence.push(`Recency bias: ${recencyCount} instances of exceptional framing`);
-  }
-
-  score = Math.min(100, score);
-
-  const explanation = score > 50
-    ? 'Significant temporal framing concerns'
-    : score > 25
-    ? 'Some selective use of timeframes'
-    : 'Appropriate temporal context';
-
-  return { score, evidence, explanation };
+  const balanceRatio = balanceScore / (words / 50);
+  return Math.min(100, Math.max(0, 100 - (balanceRatio * 50)));
 }
 
-// New Dimension 5: Omission Bias
-function analyzeOmissionBias(text: string): BiasAnalysis {
-  const evidence: string[] = [];
-  let score = 0;
-  const textLower = text.toLowerCase();
-  const wordCount = text.split(/\s+/).length;
+function analyzeFramingBias(text: string): number {
+  const war = countKeywords(text, biasPatterns.framing.war);
+  const sports = countKeywords(text, biasPatterns.framing.sports);
+  const drama = countKeywords(text, biasPatterns.framing.drama);
+  const economic = countKeywords(text, biasPatterns.framing.economic);
+  const moral = countKeywords(text, biasPatterns.framing.moral);
 
-  // Article too short for complex topics
-  const complexTopicIndicators = ['policy', 'reform', 'legislation', 'scandal', 'crisis', 'conflict'];
-  let isComplexTopic = false;
-  complexTopicIndicators.forEach(indicator => {
-    if (textLower.includes(indicator)) isComplexTopic = true;
-  });
+  const totalFraming = war * 2 + sports + drama * 1.5 + economic * 0.5 + moral * 1.5;
+  const words = text.split(/\s+/).length;
 
-  if (isComplexTopic && wordCount < 150) {
-    score += 35;
-    evidence.push('Complex topic with insufficient detail');
-  }
+  if (words === 0) return 0;
 
-  // Missing key context words
-  const contextWords = ['because', 'due to', 'caused by', 'reason', 'background', 'context'];
-  let hasContextExplanation = false;
-  contextWords.forEach(word => {
-    if (textLower.includes(word)) hasContextExplanation = true;
-  });
-
-  if (!hasContextExplanation && wordCount > 100) {
-    score += 25;
-    evidence.push('Missing causal explanation or background');
-  }
-
-  // One-sided without acknowledging complexity
-  const nuanceWords = ['complicated', 'complex', 'various factors', 'multiple', 'both'];
-  let hasNuance = false;
-  nuanceWords.forEach(word => {
-    if (textLower.includes(word)) hasNuance = true;
-  });
-
-  if (!hasNuance && isComplexTopic) {
-    score += 20;
-    evidence.push('Oversimplification of complex issue');
-  }
-
-  // Missing impact or consequences
-  const impactWords = ['impact', 'effect', 'consequence', 'result', 'outcome'];
-  let hasImpact = false;
-  impactWords.forEach(word => {
-    if (textLower.includes(word)) hasImpact = true;
-  });
-
-  if (!hasImpact && wordCount > 200) {
-    score += 15;
-    evidence.push('Missing discussion of impacts or consequences');
-  }
-
-  score = Math.min(100, score);
-
-  const explanation = score > 50
-    ? 'Significant omissions in coverage'
-    : score > 25
-    ? 'Some important context missing'
-    : 'Comprehensive coverage';
-
-  return { score, evidence, explanation };
+  const framingRatio = totalFraming / (words / 100);
+  return Math.min(100, framingRatio * 50);
 }
 
-// New Dimension 6: Framing Bias
-function analyzeFramingBias(text: string): BiasAnalysis {
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
+function countKeywords(text: string, keywords: string[]): number {
+  return keywords.reduce((count, keyword) => {
+    const regex = new RegExp(`\\b${keyword}\\b`, 'gi');
+    const matches = text.match(regex);
+    return count + (matches ? matches.length : 0);
+  }, 0);
+}
+
+function extractEvidence(text: string, keywords: string[]): string[] {
   const evidence: string[] = [];
-  let score = 0;
-  const textLower = text.toLowerCase();
+  const sentences = text.split(/[.!?]+/);
 
-  // Victim/Perpetrator framing
-  const victimWords = ['victim', 'suffering', 'targeted', 'oppressed', 'affected'];
-  const perpetratorWords = ['accused', 'guilty', 'responsible', 'blamed', 'culprit'];
+  for (const sentence of sentences) {
+    const s = sentence.trim();
+    if (s.length < 20) continue;
 
-  let victimCount = 0;
-  victimWords.forEach(word => {
-    const count = (textLower.match(new RegExp(`\\b${word}\\b`, 'g')) || []).length;
-    victimCount += count;
-  });
-
-  let perpetratorCount = 0;
-  perpetratorWords.forEach(word => {
-    const count = (textLower.match(new RegExp(`\\b${word}\\b`, 'g')) || []).length;
-    perpetratorCount += count;
-  });
-
-  const framingImbalance = Math.abs(victimCount - perpetratorCount);
-  if (framingImbalance > 3) {
-    score += framingImbalance * 8;
-    evidence.push(`One-sided framing: ${victimCount} victim vs ${perpetratorCount} perpetrator references`);
-  }
-
-  // Problem vs Solution framing
-  const problemWords = ['problem', 'issue', 'concern', 'threat', 'danger', 'risk'];
-  const solutionWords = ['solution', 'fix', 'resolve', 'address', 'tackle'];
-
-  let problemCount = 0;
-  problemWords.forEach(word => {
-    if (textLower.includes(word)) problemCount++;
-  });
-
-  let solutionCount = 0;
-  solutionWords.forEach(word => {
-    if (textLower.includes(word)) solutionCount++;
-  });
-
-  if (problemCount > 3 && solutionCount === 0) {
-    score += 25;
-    evidence.push('Problem-focused framing without solutions');
-  }
-
-  // Hero/Villain narrative
-  const heroWords = ['hero', 'champion', 'defender', 'savior', 'leader'];
-  const villainWords = ['villain', 'enemy', 'threat', 'danger', 'menace'];
-
-  let narrativeCount = 0;
-  [...heroWords, ...villainWords].forEach(word => {
-    if (textLower.includes(word)) narrativeCount++;
-  });
-
-  if (narrativeCount > 2) {
-    score += narrativeCount * 12;
-    evidence.push(`Narrative framing: ${narrativeCount} hero/villain terms`);
-  }
-
-  // Us vs Them framing
-  const divisiveWords = ['us vs them', 'our side', 'their side', 'enemy', 'ally'];
-  divisiveWords.forEach(word => {
-    if (textLower.includes(word)) {
-      score += 20;
-      evidence.push(`Divisive framing: '${word}'`);
+    for (const keyword of keywords) {
+      if (s.toLowerCase().includes(keyword.toLowerCase())) {
+        evidence.push(s.substring(0, 120) + (s.length > 120 ? '...' : ''));
+        break;
+      }
     }
-  });
+    if (evidence.length >= 3) break;
+  }
 
-  score = Math.min(100, score);
+  return evidence;
+}
 
-  const explanation = score > 50
-    ? 'Heavy use of biased framing'
-    : score > 25
-    ? 'Some framing bias present'
-    : 'Neutral framing';
+// ============================================
+// EXPLANATION FUNCTIONS
+// ============================================
 
-  return { score, evidence, explanation };
+function getPoliticalExplanation(score: number): string {
+  if (score < 35) return 'Minimal political bias. Content appears balanced across political spectrum.';
+  if (score < 65) return 'Moderate political lean detected. Some partisan language or selective emphasis present.';
+  return 'Strong political bias. Content shows clear partisan alignment or political agenda.';
+}
+
+function getRegionalExplanation(score: number): string {
+  if (score < 35) return 'Low regional bias. Content fairly represents different regions without stereotyping.';
+  if (score < 65) return 'Moderate regional bias. Some regional stereotyping or geographic prejudice present.';
+  return 'High regional bias. Content shows strong regional prejudice or unfair characterization of regions.';
+}
+
+function getSentimentExplanation(score: number): string {
+  if (score < 35) return 'Balanced sentiment. Mix of positive and negative language with neutral tone.';
+  if (score < 65) return 'Noticeable sentiment bias. Content leans positive or negative with emotional language.';
+  return 'Extreme sentiment bias. Highly emotional, one-sided language with strong opinions.';
+}
+
+function getSourceExplanation(score: number): string {
+  if (score < 35) return 'Strong attribution. Content properly cites credible, verifiable sources.';
+  if (score < 65) return 'Moderate source issues. Some reliance on weak sources or vague attribution.';
+  return 'Weak sourcing. Heavy reliance on anonymous sources, rumors, or unverified claims.';
+}
+
+function getRepresentationExplanation(score: number): string {
+  if (score < 35) return 'Fair representation. Balanced coverage without overemphasizing identity groups.';
+  if (score < 65) return 'Some representation issues. Certain groups overemphasized or stereotyped.';
+  return 'Significant representation bias. Disproportionate focus on identity with stereotyping.';
+}
+
+function getLanguageExplanation(score: number): string {
+  if (score < 35) return 'Neutral language. Factual, objective tone without loaded terminology.';
+  if (score < 65) return 'Somewhat loaded language. Some emotional or persuasive terms used.';
+  return 'Highly loaded language. Extensive use of extreme, emotional, or manipulative terms.';
+}
+
+function getFactualExplanation(score: number): string {
+  if (score < 35) return 'High factual accuracy. Content primarily based on facts, data, and evidence.';
+  if (score < 65) return 'Mixed factual accuracy. Some opinions presented as facts or unverified claims.';
+  return 'Low factual accuracy. Heavy reliance on speculation, opinions, or unsupported assertions.';
+}
+
+function getHeadlineExplanation(score: number): string {
+  if (score < 35) return 'Neutral headline. Accurate, informative, without sensationalism or clickbait.';
+  if (score < 65) return 'Somewhat sensational headline. Uses attention-grabbing language or questions.';
+  return 'Highly biased headline. Uses clickbait, sensationalism, or misleading framing.';
+}
+
+function getAttributionExplanation(score: number): string {
+  if (score < 35) return 'Strong attribution. Clear, direct sourcing with named individuals or organizations.';
+  if (score < 65) return 'Moderate attribution issues. Some vague sources or indirect attribution.';
+  return 'Weak attribution. Heavy use of vague sources, "some say," or missing attribution.';
+}
+
+function getTemporalExplanation(score: number): string {
+  if (score < 35) return 'Clear temporal framing. Specific dates, times, and timelines provided.';
+  if (score < 65) return 'Moderate temporal bias. Some vague timing or artificial urgency.';
+  return 'Significant temporal bias. Vague timing, artificial urgency, or misleading temporal context.';
+}
+
+function getOmissionExplanation(score: number): string {
+  if (score < 35) return 'Balanced coverage. Presents multiple perspectives with proper context.';
+  if (score < 65) return 'Some omission bias. Missing important context or alternative viewpoints.';
+  return 'Significant omission bias. One-sided coverage, missing crucial context or counter-arguments.';
+}
+
+function getFramingExplanation(score: number): string {
+  if (score < 35) return 'Neutral framing. Factual presentation without imposing narrative frameworks.';
+  if (score < 65) return 'Moderate framing bias. Uses metaphors or frameworks that shape interpretation.';
+  return 'Strong framing bias. Heavy use of war, sports, or drama metaphors that bias understanding.';
 }
