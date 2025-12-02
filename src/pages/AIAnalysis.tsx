@@ -157,9 +157,16 @@ export default function AIAnalysisPage() {
                           {(analysis.sentiment_score * 100).toFixed(0)}
                         </span>
                       </div>
-                      <p className="text-sm opacity-90">
-                        {getSentimentLabel(analysis.sentiment_score)}
-                      </p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm opacity-90">
+                          {getSentimentLabel(analysis.sentiment_score)}
+                        </p>
+                        {analysis.sentiment_label && (
+                          <span className="px-2 py-1 bg-white bg-opacity-30 rounded-full text-xs font-medium uppercase">
+                            {analysis.sentiment_label}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="space-y-3">

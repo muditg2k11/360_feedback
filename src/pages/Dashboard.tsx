@@ -20,6 +20,9 @@ interface Stats {
   activeSources: number;
   todayCount: number;
   regions: number;
+  sentimentPositive: number;
+  sentimentNegative: number;
+  sentimentNeutral: number;
   recentActivity: Array<{
     title: string;
     time: string;
@@ -36,6 +39,9 @@ export default function Dashboard() {
     activeSources: 0,
     todayCount: 0,
     regions: 0,
+    sentimentPositive: 0,
+    sentimentNegative: 0,
+    sentimentNeutral: 0,
     recentActivity: []
   });
   const [isLoading, setIsLoading] = useState(true);
@@ -78,7 +84,7 @@ export default function Dashboard() {
 
       const { data: analyses } = await supabase
         .from('ai_analyses')
-        .select('bias_indicators');
+        .select('bias_indicators, sentiment_label');
 
       const { data: sources } = await supabase
         .from('media_sources')
@@ -93,6 +99,13 @@ export default function Dashboard() {
       const avgBiasScore = biasScores.length > 0
         ? Math.round(biasScores.reduce((sum, score) => sum + score, 0) / biasScores.length)
         : 0;
+
+      // Calculate sentiment distribution
+      const sentimentPositive = analyses?.filter(a => a.sentiment_label === 'positive').length || 0;
+      const sentimentNegative = analyses?.filter(a => a.sentiment_label === 'negative').length || 0;
+      const sentimentNeutral = analyses?.filter(a =>
+        a.sentiment_label === 'neutral' || a.sentiment_label === 'mixed' || !a.sentiment_label
+      ).length || 0;
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -114,6 +127,9 @@ export default function Dashboard() {
         activeSources: sources?.length || 0,
         todayCount,
         regions: regions.size,
+        sentimentPositive,
+        sentimentNegative,
+        sentimentNeutral,
         recentActivity: recentItems
       });
     } catch (error) {
@@ -159,7 +175,7 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8">
           <div className="group relative bg-gradient-to-br from-blue-500/10 to-cyan-500/10 backdrop-blur-xl border border-blue-500/20 rounded-2xl p-6 hover:border-blue-400/50 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/20">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
             <div className="relative">
@@ -212,6 +228,30 @@ export default function Dashboard() {
               </div>
               <div className="text-sm text-purple-200 font-medium">Active Sources</div>
               <div className="mt-2 text-xs text-purple-300/60">{stats.regions} regions covered</div>
+            </div>
+          </div>
+
+          <div className="group relative bg-gradient-to-br from-teal-500/10 to-cyan-500/10 backdrop-blur-xl border border-teal-500/20 rounded-2xl p-6 hover:border-teal-400/50 transition-all duration-300 hover:scale-105 hover:shadow-2xl hover:shadow-teal-500/20">
+            <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-transparent rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <Activity className="w-8 h-8 text-teal-400" />
+                <div className="text-sm font-bold text-teal-300">Sentiment</div>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-teal-200">Positive</span>
+                  <span className="text-sm font-bold text-green-400">{stats.sentimentPositive}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-teal-200">Negative</span>
+                  <span className="text-sm font-bold text-red-400">{stats.sentimentNegative}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-teal-200">Neutral</span>
+                  <span className="text-sm font-bold text-gray-400">{stats.sentimentNeutral}</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -267,15 +267,58 @@ export default function BiasDetection() {
                     <h3 className="font-semibold text-gray-900 mb-1">{feedback.title}</h3>
                     <p className="text-sm text-gray-600 line-clamp-2">{feedback.content}</p>
                   </div>
-                  <div
-                    className={`flex items-center space-x-2 px-3 py-1.5 rounded-full border text-sm font-medium ${getBiasColor(
-                      level
-                    )}`}
-                  >
-                    {getBiasIcon(level)}
-                    <span className="capitalize">{level} Bias</span>
+                  <div className="flex items-center space-x-2">
+                    <div
+                      className={`flex items-center space-x-2 px-3 py-1.5 rounded-full border text-sm font-medium ${getBiasColor(
+                        level
+                      )}`}
+                    >
+                      {getBiasIcon(level)}
+                      <span className="capitalize">{level} Bias</span>
+                    </div>
+                    {analysis.sentiment_label && (
+                      <div
+                        className={`flex items-center px-3 py-1.5 rounded-full text-sm font-medium ${
+                          analysis.sentiment_label === 'positive'
+                            ? 'bg-green-100 text-green-700 border border-green-200'
+                            : analysis.sentiment_label === 'negative'
+                            ? 'bg-red-100 text-red-700 border border-red-200'
+                            : analysis.sentiment_label === 'mixed'
+                            ? 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+                            : 'bg-gray-100 text-gray-700 border border-gray-200'
+                        }`}
+                      >
+                        <span className="capitalize">{analysis.sentiment_label}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                {analysis.sentiment_score !== undefined && (
+                  <div className="mb-3 p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-gray-600">Sentiment Score</span>
+                      <span className="text-xs font-bold text-gray-900">
+                        {(analysis.sentiment_score * 100).toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all ${
+                          analysis.sentiment_score > 0.2
+                            ? 'bg-green-500'
+                            : analysis.sentiment_score < -0.2
+                            ? 'bg-red-500'
+                            : 'bg-gray-400'
+                        }`}
+                        style={{
+                          width: `${Math.abs(analysis.sentiment_score) * 100}%`,
+                          marginLeft: analysis.sentiment_score < 0 ? '0' : 'auto',
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pt-3 border-t border-gray-100">
                   <div>
